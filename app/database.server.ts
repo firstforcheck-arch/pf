@@ -13,7 +13,7 @@ export type ChapterRecord = {
   content: string;
   sortOrder: number;
 };
-export type BookSettings = { title: string; description: string };
+export type BookSettings = { title: string; description: string; notes: string };
 
 const dataDirectory = join(process.cwd(), "data");
 mkdirSync(dataDirectory, { recursive: true });
@@ -53,6 +53,11 @@ try {
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
+try {
+  database.exec("ALTER TABLE book_settings ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
 database.exec("UPDATE chapters SET sort_order = id WHERE sort_order = 0");
 
 const chapterCount = database.prepare("SELECT COUNT(*) AS count FROM chapters").get() as { count: number };
@@ -65,6 +70,7 @@ if (chapterCount.count === 0) {
   insert.run("2", "II", "Глава вторая", "История продолжается.", "10 мин", "Текст второй главы появится здесь.");
   insert.run("3", "III", "Глава третья", "Новый поворот.", "12 мин", "Текст третьей главы появится здесь.");
 }
+normalizeChapterOrder();
 
 export function countUsers() {
   return (database.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number }).count;
@@ -126,30 +132,30 @@ export function saveChapter(chapter: ChapterRecord) {
 }
 
 export function getBookSettings() {
-  return database.prepare("SELECT title, description FROM book_settings WHERE id = 1").get() as BookSettings;
+  return database.prepare("SELECT title, description, notes FROM book_settings WHERE id = 1").get() as BookSettings;
 }
 
 export function saveBookSettings(settings: BookSettings) {
-  database.prepare("UPDATE book_settings SET title = ?, description = ? WHERE id = 1")
-    .run(settings.title, settings.description);
+  database.prepare("UPDATE book_settings SET title = ?, description = ?, notes = ? WHERE id = 1")
+    .run(settings.title, settings.description, settings.notes);
 }
 
 export function createChapter() {
   const next = database.prepare(`
-    SELECT COALESCE(MAX(sort_order), 0) + 1 AS sortOrder,
-           COALESCE(MAX(id), 0) + 1 AS suggestedNumber
+    SELECT COALESCE(MAX(sort_order), 0) + 1 AS sortOrder
     FROM chapters
-  `).get() as { sortOrder: number; suggestedNumber: number };
-  const slug = `chapter-${Date.now()}`;
+  `).get() as { sortOrder: number };
+  const position = next.sortOrder;
   const result = database.prepare(`
     INSERT INTO chapters (slug, number, title, subtitle, content, sort_order)
     VALUES (?, ?, 'Новая глава', '', '', ?)
-  `).run(slug, String(next.suggestedNumber), next.sortOrder);
+  `).run(String(position), String(position), position);
   return Number(result.lastInsertRowid);
 }
 
 export function deleteChapter(id: number) {
   database.prepare("DELETE FROM chapters WHERE id = ?").run(id);
+  normalizeChapterOrder();
 }
 
 export function reorderChapters(ids: number[]) {
@@ -161,10 +167,22 @@ export function reorderChapters(ids: number[]) {
   database.exec("BEGIN IMMEDIATE");
   try {
     const update = database.prepare("UPDATE chapters SET sort_order = ? WHERE id = ?");
-    ids.forEach((id, index) => update.run(index + 1, id));
+    const temporarySlug = database.prepare("UPDATE chapters SET slug = ? WHERE id = ?");
+    ids.forEach((id, index) => {
+      update.run(index + 1, id);
+      temporarySlug.run(`__moving_${id}`, id);
+    });
+    const finalize = database.prepare("UPDATE chapters SET slug = ?, number = ? WHERE id = ?");
+    ids.forEach((id, index) => finalize.run(String(index + 1), String(index + 1), id));
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
     throw error;
   }
+}
+
+function normalizeChapterOrder() {
+  const ids = (database.prepare("SELECT id FROM chapters ORDER BY sort_order, id").all() as { id: number }[])
+    .map((row) => row.id);
+  if (ids.length > 0) reorderChapters(ids);
 }

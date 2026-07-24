@@ -35,7 +35,13 @@ export async function action({ request }: Route.ActionArgs) {
     const title = String(form.get("title") ?? "").trim();
     const description = String(form.get("description") ?? "").trim();
     if (!title) return { ok: false, error: "Название не может быть пустым." };
-    saveBookSettings({ title, description });
+    saveBookSettings({ title, description, notes: getBookSettings().notes });
+    return { ok: true };
+  }
+
+  if (intent === "save-notes") {
+    const current = getBookSettings();
+    saveBookSettings({ ...current, notes: String(form.get("notes") ?? "").trim() });
     return { ok: true };
   }
 
@@ -87,6 +93,16 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
             <label>Описание<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
             {actionData?.error && <p className="form-error">{actionData.error}</p>}
             <button type="submit">Сохранить шапку</button>
+          </Form>
+        </div>
+
+        <div className="admin-section">
+          <p className="eyebrow">Дополнительная информация</p>
+          <h1>Примечания</h1>
+          <Form method="post" className="editor-form book-header-form">
+            <input type="hidden" name="intent" value="save-notes" />
+            <label>Текст примечания<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} /></label>
+            <button type="submit">Сохранить примечания</button>
           </Form>
         </div>
 

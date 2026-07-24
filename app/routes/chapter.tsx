@@ -1,5 +1,5 @@
 import type { Route } from "./+types/chapter";
-import { Link } from "react-router";
+import { Link, useRouteLoaderData } from "react-router";
 import { Header } from "../components/header";
 import { getBookSettings, getChapter, getPublishedChapters } from "../database.server";
 
@@ -18,6 +18,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 
 export default function ChapterPage({ loaderData }: Route.ComponentProps) {
   const { chapter, chapters } = loaderData;
+  const rootData = useRouteLoaderData<{ user: { role: "admin" | "reader" } | null }>("root");
 
   if (!chapter) {
     return (
@@ -38,7 +39,14 @@ export default function ChapterPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <main className="reader">
-      <Header action={<Link className="reader__back" to="/#chapters">← Все главы</Link>} />
+      <Header action={(
+        <div className="reader-header-actions">
+          {rootData?.user?.role === "admin" && (
+            <Link className="reader__edit" to={`/admin/chapters/${chapter.id}`}>Редактор</Link>
+          )}
+          <Link className="reader__back" to="/#chapters">← Все главы</Link>
+        </div>
+      )} />
 
       <article className="reader__article">
         <div className="reader__intro">

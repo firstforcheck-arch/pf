@@ -29,15 +29,13 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   const chapter = {
     ...current,
-    slug: String(form.get("slug") ?? "").trim(),
-    number: String(form.get("number") ?? "").trim(),
     title: String(form.get("title") ?? "").trim(),
     subtitle: String(form.get("subtitle") ?? "").trim(),
     content: String(form.get("content") ?? ""),
   };
 
-  if (!chapter.slug || !chapter.number || !chapter.title) {
-    return data({ error: "Адрес, номер и название обязательны." }, { status: 400 });
+  if (!chapter.title) {
+    return data({ error: "Название обязательно." }, { status: 400 });
   }
 
   try {
@@ -72,10 +70,7 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString("ru-RU")} знаков в текущей главе · 1800 знаков на страницу</small>
         </div>
         <Form method="post" className="editor-form">
-          <div className="editor-form__row">
-            <label>Номер<input name="number" defaultValue={chapter.number} required /></label>
-            <label>Адрес<input name="slug" defaultValue={chapter.slug} required /></label>
-          </div>
+          <div className="chapter-position-note">Глава {chapter.number} · адрес /chapters/{chapter.slug}</div>
           <label>Название<input name="title" defaultValue={chapter.title} required /></label>
           <label>Краткое описание<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
           <label>Текст главы<textarea className="editor-form__content" name="content" rows={28} value={content} onChange={(event) => setContent(event.currentTarget.value)} /></label>

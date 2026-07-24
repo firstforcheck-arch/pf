@@ -43,10 +43,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </section>
 
         <section className="about section">
-          <div className="section__label">О книге</div>
+          <div className="section__label">Примечания</div>
           <div className="about__content">
-            <p className="about__quote">{book.title}</p>
-            <p>{book.description}</p>
+            <p className="about__quote">Примечания</p>
+            <p className="book-notes">{book.notes || "Примечаний пока нет."}</p>
             <div className="book-stats">
               <span><b>Объём работы</b>{formatPages(totalPages)}</span>
             </div>
