@@ -1,5 +1,6 @@
 import type { Route } from "./+types/home";
-import { Link } from "react-router";
+import { useEffect } from "react";
+import { Link, useLocation } from "react-router";
 import { Header } from "../components/header";
 import { getBookSettings, getPublishedChapters } from "../database.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
@@ -23,6 +24,21 @@ export async function loader() {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { book, chapters, totalPages } = loaderData;
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.hash !== "#chapters") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("chapters")?.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.key, location.hash]);
+
   return (
     <>
       <main>

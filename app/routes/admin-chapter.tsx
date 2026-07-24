@@ -59,7 +59,9 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
   const totalPages = countTotalPages([...otherChapterTexts, content]);
   return (
     <main className="admin-page">
-      <Header />
+      <Header beforeAction={(
+        <a className="header-button" href={`/chapters/${chapter.slug}`}>Читать</a>
+      )} />
       <section className="admin-shell admin-shell--editor">
         <p className="eyebrow">Редактор</p>
         <h1>{chapter.title}</h1>

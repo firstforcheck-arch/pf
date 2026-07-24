@@ -1,7 +1,8 @@
 import type { Route } from "./+types/chapter";
 import { Link, useRouteLoaderData } from "react-router";
 import { Header } from "../components/header";
-import { getBookSettings, getChapter, getPublishedChapters } from "../database.server";
+import { getBookSettings, getChapter, getChapterBySlug, getPublishedChapters } from "../database.server";
+import { getCurrentUser } from "../auth.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
@@ -11,9 +12,12 @@ export function meta({ loaderData }: Route.MetaArgs) {
   ];
 }
 
-export async function loader({ params }: Route.LoaderArgs) {
+export async function loader({ params, request }: Route.LoaderArgs) {
   const chapters = getPublishedChapters();
-  return { chapter: getChapter(params.chapterId), chapters, book: getBookSettings() };
+  const publishedChapter = getChapter(params.chapterId);
+  const user = publishedChapter ? null : await getCurrentUser(request);
+  const chapter = publishedChapter ?? (user?.role === "admin" ? getChapterBySlug(params.chapterId) : undefined);
+  return { chapter, chapters, book: getBookSettings() };
 }
 
 export default function ChapterPage({ loaderData }: Route.ComponentProps) {
@@ -34,8 +38,8 @@ export default function ChapterPage({ loaderData }: Route.ComponentProps) {
   }
 
   const chapterIndex = chapters.findIndex((item) => item.id === chapter.id);
-  const previous = chapters[chapterIndex - 1];
-  const next = chapters[chapterIndex + 1];
+  const previous = chapterIndex >= 0 ? chapters[chapterIndex - 1] : undefined;
+  const next = chapterIndex >= 0 ? chapters[chapterIndex + 1] : undefined;
 
   return (
     <main className="reader">

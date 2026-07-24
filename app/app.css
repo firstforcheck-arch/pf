@@ -18,6 +18,28 @@ html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--paper); }
 a { color: inherit; text-decoration: none; }
 
+.scroll-memory-button {
+  position: fixed;
+  z-index: 90;
+  right: clamp(18px, 2.5vw, 36px);
+  bottom: clamp(18px, 2.5vw, 36px);
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(22, 61, 43, .18);
+  border-radius: 50%;
+  color: var(--green);
+  background: #dff3d5;
+  box-shadow: 0 10px 30px rgba(12, 40, 24, .16);
+  cursor: pointer;
+  transition: background .25s ease, box-shadow .25s ease, transform .25s ease;
+}
+.scroll-memory-button:hover { background: #cfedc0; box-shadow: 0 14px 38px rgba(12, 40, 24, .22); transform: translateY(-3px); }
+.scroll-memory-button span { display: block; font-size: 25px; line-height: 1; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+.scroll-memory-button--down span { transform: rotate(180deg); }
+
 .route-loader {
   position: fixed;
   z-index: 1000;
@@ -167,7 +189,7 @@ a { color: inherit; text-decoration: none; }
 .book-stats span { display: grid; gap: 9px; font-size: 16px; font-weight: 700; }
 .book-stats b { color: #829082; font-size: 9px; letter-spacing: .18em; text-transform: uppercase; }
 
-.chapters { color: #f5fff2; background: var(--green); }
+.chapters { scroll-margin-top: 92px; color: #f5fff2; background: var(--green); }
 .chapters .section__label { color: rgba(255,255,255,.45); }
 .chapters__content { min-width: 0; }
 .section-heading { margin-bottom: 55px; }
@@ -341,6 +363,7 @@ footer > span { text-align: right; }
 
 @media (max-width: 700px) {
   .site-header { height: 76px; }
+  .chapters { scroll-margin-top: 76px; }
   .wordmark { font-size: 16px; }
   .wordmark img { width: 38px; height: 38px; }
   .hero { min-height: 760px; }

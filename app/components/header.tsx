@@ -3,9 +3,10 @@ import { Form, Link, useRouteLoaderData } from "react-router";
 type HeaderProps = {
   variant?: "overlay" | "solid";
   action?: React.ReactNode;
+  beforeAction?: React.ReactNode;
 };
 
-export function Header({ variant = "solid", action }: HeaderProps) {
+export function Header({ variant = "solid", action, beforeAction }: HeaderProps) {
   const rootData = useRouteLoaderData<{
     user: { email: string; role: "admin" | "reader" } | null;
     book: { title: string; description: string };
@@ -19,6 +20,7 @@ export function Header({ variant = "solid", action }: HeaderProps) {
         <span>{rootData?.book.title ?? "Phantom Freedom"}</span>
       </Link>
       <div className="site-header__action">
+        {beforeAction}
         {action ?? (user ? (
           <>
             {user.role === "admin" && <Link className="header-button" to="/admin/chapters">Редактор</Link>}

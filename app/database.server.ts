@@ -117,6 +117,13 @@ export function getChapter(slug: string) {
   `).get(slug) as ChapterRecord | undefined;
 }
 
+export function getChapterBySlug(slug: string) {
+  return database.prepare(`
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE slug = ?
+  `).get(slug) as ChapterRecord | undefined;
+}
+
 export function getChapterForEditing(id: number) {
   return database.prepare(`
     SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published

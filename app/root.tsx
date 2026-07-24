@@ -12,6 +12,7 @@ import { RouteLoader } from "./components/route-loader";
 import { getCurrentUser } from "./auth.server";
 import type { Route } from "./+types/root";
 import { getBookSettings } from "./database.server";
+import { ScrollMemoryButton } from "./components/scroll-memory-button";
 
 export async function loader({ request }: Route.LoaderArgs) {
   return { user: await getCurrentUser(request), book: getBookSettings() };
@@ -41,6 +42,7 @@ export default function App() {
     <>
       <RouteLoader />
       <Outlet />
+      <ScrollMemoryButton />
     </>
   );
 }
