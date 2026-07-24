@@ -1,0 +1,71 @@
+import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+import { createCookieSessionStorage, redirect } from "react-router";
+import { countUsers, createUser, findUserByEmail, findUserById } from "./database.server";
+
+const scrypt = promisify(scryptCallback);
+const sessionSecret = process.env.SESSION_SECRET
+  ?? (process.env.NODE_ENV === "production"
+    ? (() => { throw new Error("SESSION_SECRET must be configured in production"); })()
+    : "development-only-change-this-secret");
+
+const { getSession, commitSession, destroySession } = createCookieSessionStorage<{ userId: number }>({
+  cookie: {
+    name: "__phantom_session",
+    httpOnly: true,
+    maxAge: 60 * 60 * 24 * 30,
+    path: "/",
+    sameSite: "lax",
+    secrets: [sessionSecret],
+    secure: process.env.NODE_ENV === "production",
+  },
+});
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const derived = await scrypt(password, salt, 64) as Buffer;
+  return `${salt}:${derived.toString("hex")}`;
+}
+
+async function verifyPassword(password: string, stored: string) {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const expected = Buffer.from(hash, "hex");
+  const actual = await scrypt(password, salt, expected.length) as Buffer;
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+export async function register(email: string, password: string) {
+  const role = countUsers() === 0 ? "admin" : "reader";
+  return createUser(email, await hashPassword(password), role);
+}
+
+export async function authenticate(email: string, password: string) {
+  const user = findUserByEmail(email);
+  if (!user || !(await verifyPassword(password, user.passwordHash))) return null;
+  return user.id;
+}
+
+export async function getCurrentUser(request: Request) {
+  const session = await getSession(request.headers.get("Cookie"));
+  const userId = session.get("userId");
+  return userId ? findUserById(userId) ?? null : null;
+}
+
+export async function createUserSession(request: Request, userId: number, destination = "/") {
+  const session = await getSession(request.headers.get("Cookie"));
+  session.set("userId", userId);
+  return redirect(destination, { headers: { "Set-Cookie": await commitSession(session) } });
+}
+
+export async function requireAdmin(request: Request) {
+  const user = await getCurrentUser(request);
+  if (!user) throw redirect("/login");
+  if (user.role !== "admin") throw new Response("Недостаточно прав", { status: 403 });
+  return user;
+}
+
+export async function logout(request: Request) {
+  const session = await getSession(request.headers.get("Cookie"));
+  return redirect("/", { headers: { "Set-Cookie": await destroySession(session) } });
+}
