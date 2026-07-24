@@ -1,19 +1,19 @@
 import type { Route } from "./+types/chapter";
 import { Link } from "react-router";
 import { Header } from "../components/header";
-import { getChapter, getPublishedChapters } from "../database.server";
+import { getBookSettings, getChapter, getPublishedChapters } from "../database.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
   return [
-    { title: chapter ? `${chapter.title} — Phantom Freedom` : "Глава не найдена — Phantom Freedom" },
-    { name: "description", content: chapter?.subtitle ?? "Phantom Freedom" },
+    { title: chapter ? `${chapter.title} — ${loaderData?.book.title}` : `Глава не найдена — ${loaderData?.book.title}` },
+    { name: "description", content: chapter?.subtitle ?? loaderData?.book.description },
   ];
 }
 
 export async function loader({ params }: Route.LoaderArgs) {
   const chapters = getPublishedChapters();
-  return { chapter: getChapter(params.chapterId), chapters };
+  return { chapter: getChapter(params.chapterId), chapters, book: getBookSettings() };
 }
 
 export default function ChapterPage({ loaderData }: Route.ComponentProps) {
@@ -43,7 +43,7 @@ export default function ChapterPage({ loaderData }: Route.ComponentProps) {
       <article className="reader__article">
         <div className="reader__intro">
           <span className="reader__number">{chapter.number}</span>
-          <p className="eyebrow">Глава {chapter.slug} · {chapter.readingTime} чтения</p>
+          <p className="eyebrow">Глава {chapter.slug}</p>
           <h1>{chapter.title}</h1>
           <p>{chapter.subtitle}</p>
         </div>

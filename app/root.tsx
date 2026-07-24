@@ -11,9 +11,10 @@ import "./app.css";
 import { RouteLoader } from "./components/route-loader";
 import { getCurrentUser } from "./auth.server";
 import type { Route } from "./+types/root";
+import { getBookSettings } from "./database.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return { user: await getCurrentUser(request) };
+  return { user: await getCurrentUser(request), book: getBookSettings() };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {

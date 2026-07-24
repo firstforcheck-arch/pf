@@ -6,14 +6,17 @@ type HeaderProps = {
 };
 
 export function Header({ variant = "solid", action }: HeaderProps) {
-  const rootData = useRouteLoaderData<{ user: { email: string; role: "admin" | "reader" } | null }>("root");
+  const rootData = useRouteLoaderData<{
+    user: { email: string; role: "admin" | "reader" } | null;
+    book: { title: string; description: string };
+  }>("root");
   const user = rootData?.user;
 
   return (
     <header className={`site-header site-header--${variant}`}>
-      <Link className="wordmark" to="/" aria-label="Phantom Freedom — на главную">
+      <Link className="wordmark" to="/" aria-label={`${rootData?.book.title ?? "Phantom Freedom"} — на главную`}>
         <img src="/var5.png" alt="" />
-        <span>Phantom Freedom</span>
+        <span>{rootData?.book.title ?? "Phantom Freedom"}</span>
       </Link>
       <div className="site-header__action">
         {action ?? (user ? (

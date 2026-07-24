@@ -11,7 +11,9 @@ export type ChapterRecord = {
   subtitle: string;
   readingTime: string;
   content: string;
+  sortOrder: number;
 };
+export type BookSettings = { title: string; description: string };
 
 const dataDirectory = join(process.cwd(), "data");
 mkdirSync(dataDirectory, { recursive: true });
@@ -37,7 +39,21 @@ database.exec(`
     published INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS book_settings (
+    id INTEGER PRIMARY KEY CHECK(id = 1),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL
+  );
+  INSERT OR IGNORE INTO book_settings (id, title, description)
+  VALUES (1, 'Phantom Freedom', 'История о свободе, памяти и цене решений, которые продолжают преследовать нас даже тогда, когда прошлое кажется окончательно забытым.');
 `);
+
+try {
+  database.exec("ALTER TABLE chapters ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+database.exec("UPDATE chapters SET sort_order = id WHERE sort_order = 0");
 
 const chapterCount = database.prepare("SELECT COUNT(*) AS count FROM chapters").get() as { count: number };
 if (chapterCount.count === 0) {
@@ -75,28 +91,28 @@ export function findUserById(id: number) {
 
 export function getPublishedChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content
-    FROM chapters WHERE published = 1 ORDER BY id
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    FROM chapters WHERE published = 1 ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
 export function getAllChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content
-    FROM chapters ORDER BY id
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    FROM chapters ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
 export function getChapter(slug: string) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
     FROM chapters WHERE slug = ? AND published = 1
   `).get(slug) as ChapterRecord | undefined;
 }
 
 export function getChapterForEditing(id: number) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
     FROM chapters WHERE id = ?
   `).get(id) as ChapterRecord | undefined;
 }
@@ -107,4 +123,48 @@ export function saveChapter(chapter: ChapterRecord) {
     SET slug = ?, number = ?, title = ?, subtitle = ?, reading_time = ?, content = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(chapter.slug, chapter.number, chapter.title, chapter.subtitle, chapter.readingTime, chapter.content, chapter.id);
+}
+
+export function getBookSettings() {
+  return database.prepare("SELECT title, description FROM book_settings WHERE id = 1").get() as BookSettings;
+}
+
+export function saveBookSettings(settings: BookSettings) {
+  database.prepare("UPDATE book_settings SET title = ?, description = ? WHERE id = 1")
+    .run(settings.title, settings.description);
+}
+
+export function createChapter() {
+  const next = database.prepare(`
+    SELECT COALESCE(MAX(sort_order), 0) + 1 AS sortOrder,
+           COALESCE(MAX(id), 0) + 1 AS suggestedNumber
+    FROM chapters
+  `).get() as { sortOrder: number; suggestedNumber: number };
+  const slug = `chapter-${Date.now()}`;
+  const result = database.prepare(`
+    INSERT INTO chapters (slug, number, title, subtitle, content, sort_order)
+    VALUES (?, ?, 'Новая глава', '', '', ?)
+  `).run(slug, String(next.suggestedNumber), next.sortOrder);
+  return Number(result.lastInsertRowid);
+}
+
+export function deleteChapter(id: number) {
+  database.prepare("DELETE FROM chapters WHERE id = ?").run(id);
+}
+
+export function reorderChapters(ids: number[]) {
+  const existing = getAllChapters().map((chapter) => chapter.id);
+  if (ids.length !== existing.length || !existing.every((id) => ids.includes(id))) {
+    throw new Error("Invalid chapter order");
+  }
+
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const update = database.prepare("UPDATE chapters SET sort_order = ? WHERE id = ?");
+    ids.forEach((id, index) => update.run(index + 1, id));
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }

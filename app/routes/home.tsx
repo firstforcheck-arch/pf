@@ -1,23 +1,28 @@
 import type { Route } from "./+types/home";
 import { Link } from "react-router";
 import { Header } from "../components/header";
-import { getPublishedChapters } from "../database.server";
+import { getBookSettings, getPublishedChapters } from "../database.server";
+import { countTotalPages, formatPages } from "../text-metrics";
 
-const bookDescription = "История о свободе, памяти и цене решений, которые продолжают преследовать нас даже тогда, когда прошлое кажется окончательно забытым.";
-
-export function meta({}: Route.MetaArgs) {
+export function meta({ loaderData }: Route.MetaArgs) {
+  const book = loaderData?.book;
   return [
-    { title: "Phantom Freedom" },
-    { name: "description", content: bookDescription },
+    { title: book?.title ?? "Phantom Freedom" },
+    { name: "description", content: book?.description ?? "" },
   ];
 }
 
 export async function loader() {
-  return { chapters: getPublishedChapters() };
+  const chapters = getPublishedChapters();
+  return {
+    book: getBookSettings(),
+    chapters,
+    totalPages: countTotalPages(chapters.map((chapter) => chapter.content)),
+  };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { chapters } = loaderData;
+  const { book, chapters, totalPages } = loaderData;
   return (
     <>
       <main>
@@ -26,22 +31,25 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div className="hero__glow" />
           <Header variant="overlay" />
           <div className="hero__content">
-            <h1>Phantom<br />Freedom</h1>
-            <p className="hero__lead">{bookDescription}</p>
+            <h1>{book.title}</h1>
+            <p className="hero__lead">{book.description}</p>
             <a className="hero__button" href="#chapters">
               Начать читать <span aria-hidden="true">↓</span>
             </a>
           </div>
           <div className="hero__aside">
-            <span>{String(chapters.length).padStart(2, "0")} главы</span>
+            <span>{String(chapters.length).padStart(2, "0")} главы · {formatPages(totalPages)}</span>
           </div>
         </section>
 
         <section className="about section">
           <div className="section__label">О книге</div>
           <div className="about__content">
-            <p className="about__quote">Phantom Freedom</p>
-            <p>{bookDescription}</p>
+            <p className="about__quote">{book.title}</p>
+            <p>{book.description}</p>
+            <div className="book-stats">
+              <span><b>Объём работы</b>{formatPages(totalPages)}</span>
+            </div>
           </div>
         </section>
 
@@ -60,7 +68,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     <b>{chapter.title}</b>
                     <small>{chapter.subtitle}</small>
                   </span>
-                  <span className="chapter-card__time">{chapter.readingTime}</span>
                   <span className="chapter-card__arrow" aria-hidden="true">↗</span>
                 </Link>
               ))}
@@ -70,11 +77,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       </main>
 
       <footer>
-        <Link className="wordmark" to="/" aria-label="Phantom Freedom — на главную">
+        <Link className="wordmark" to="/" aria-label={`${book.title} — на главную`}>
           <img src="/var5.png" alt="" />
-          <span>Phantom Freedom</span>
+          <span>{book.title}</span>
         </Link>
-        <p>{bookDescription}</p>
+        <p>{book.description}</p>
         <span>© 2026</span>
       </footer>
     </>
