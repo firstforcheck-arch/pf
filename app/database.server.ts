@@ -12,6 +12,7 @@ export type ChapterRecord = {
   readingTime: string;
   content: string;
   sortOrder: number;
+  published: number;
 };
 export type BookSettings = { title: string; description: string; notes: string };
 
@@ -97,28 +98,28 @@ export function findUserById(id: number) {
 
 export function getPublishedChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE published = 1 ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
 export function getAllChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
 export function getChapter(slug: string) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE slug = ? AND published = 1
   `).get(slug) as ChapterRecord | undefined;
 }
 
 export function getChapterForEditing(id: number) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder
+    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE id = ?
   `).get(id) as ChapterRecord | undefined;
 }
@@ -129,6 +130,11 @@ export function saveChapter(chapter: ChapterRecord) {
     SET slug = ?, number = ?, title = ?, subtitle = ?, reading_time = ?, content = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(chapter.slug, chapter.number, chapter.title, chapter.subtitle, chapter.readingTime, chapter.content, chapter.id);
+}
+
+export function setChapterPublished(id: number, published: boolean) {
+  database.prepare("UPDATE chapters SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(published ? 1 : 0, id);
 }
 
 export function getBookSettings() {

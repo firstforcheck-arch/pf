@@ -1,7 +1,7 @@
 import { data, Form, redirect } from "react-router";
 import type { Route } from "./+types/admin-chapter";
 import { requireAdmin } from "../auth.server";
-import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter } from "../database.server";
+import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter, setChapterPublished } from "../database.server";
 import { Header } from "../components/header";
 import { useState } from "react";
 import { countPages, countTotalPages, formatPages } from "../text-metrics";
@@ -25,6 +25,10 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (form.get("intent") === "delete") {
     deleteChapter(current.id);
     return redirect("/admin/chapters");
+  }
+  if (form.get("intent") === "toggle-publication") {
+    setChapterPublished(current.id, current.published !== 1);
+    return redirect(`/admin/chapters/${current.id}`);
   }
 
   const chapter = {
@@ -50,6 +54,7 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
   const { chapter, otherChapterTexts } = loaderData;
   const [content, setContent] = useState(chapter.content);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
   const pages = countPages(content);
   const totalPages = countTotalPages([...otherChapterTexts, content]);
   return (
@@ -78,12 +83,23 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           {actionData?.error && <p className="form-error">{actionData.error}</p>}
           <button type="submit">Сохранить изменения</button>
         </Form>
-        <div className="danger-zone">
-          <div>
-            <b>Удаление главы</b>
-            <p>Глава и весь её текст будут удалены без возможности восстановления.</p>
+        <div className="chapter-controls">
+          <div className={`publication-zone ${chapter.published === 1 ? "publication-zone--published" : ""}`}>
+            <div>
+              <b>Публикация главы</b>
+              <p>{chapter.published === 1 ? "Глава опубликована" : "Глава скрыта"}</p>
+            </div>
+            <button type="button" onClick={() => setPublicationDialogOpen(true)}>
+              {chapter.published === 1 ? "Скрыть" : "Опубликовать"}
+            </button>
           </div>
-          <button type="button" onClick={() => setDeleteDialogOpen(true)}>Удалить главу</button>
+          <div className="danger-zone">
+            <div>
+              <b>Удаление главы</b>
+              <p>Глава и весь её текст будут удалены без возможности восстановления.</p>
+            </div>
+            <button type="button" onClick={() => setDeleteDialogOpen(true)}>Удалить главу</button>
+          </div>
         </div>
       </section>
       {deleteDialogOpen && (
@@ -98,6 +114,30 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
               <button type="button" onClick={() => setDeleteDialogOpen(false)}>Нет</button>
               <Form method="post">
                 <input type="hidden" name="intent" value="delete" />
+                <button type="submit">Да</button>
+              </Form>
+            </div>
+          </section>
+        </div>
+      )}
+      {publicationDialogOpen && (
+        <div className="confirm-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPublicationDialogOpen(false);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="publication-title">
+            <p className="eyebrow">Публикация главы</p>
+            <h2 id="publication-title">
+              {chapter.published === 1 ? "Скрыть главу?" : "Опубликовать главу?"}
+            </h2>
+            <p>
+              {chapter.published === 1
+                ? "Глава исчезнет из публичного списка и станет недоступна для чтения."
+                : "Глава появится в публичном списке и станет доступна читателям."}
+            </p>
+            <div className="confirm-modal__actions">
+              <button type="button" onClick={() => setPublicationDialogOpen(false)}>Нет</button>
+              <Form method="post" onSubmit={() => setPublicationDialogOpen(false)}>
+                <input type="hidden" name="intent" value="toggle-publication" />
                 <button type="submit">Да</button>
               </Form>
             </div>

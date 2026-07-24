@@ -10,7 +10,7 @@ import {
   saveBookSettings,
 } from "../database.server";
 import { Header } from "../components/header";
-import { countPages, countTotalPages, formatPages } from "../text-metrics";
+import { countPages, countTotalPages, formatChapters, formatPages } from "../text-metrics";
 
 export function meta() {
   return [{ title: "Редактор — Phantom Freedom" }];
@@ -111,7 +111,10 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
           <h1>Главы</h1>
           <div className="admin-summary">
             <span>Общий объём текста</span>
-            <b>{formatPages(loaderData.totalPages)}</b>
+            <div className="admin-summary__values">
+              <strong>{formatChapters(loaderData.chapters.length)}</strong>
+              <b>{formatPages(loaderData.totalPages)}</b>
+            </div>
             <small>Расчёт: 1800 знаков с пробелами на страницу</small>
           </div>
           <Form method="post">
@@ -141,6 +144,9 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
                 </button>
                 <span>{chapter.number}</span>
                 <Link to={`/admin/chapters/${chapter.id}`}>{chapter.title}</Link>
+                <strong className={`publication-badge ${chapter.published === 1 ? "publication-badge--yes" : ""}`}>
+                  Опубликована: {chapter.published === 1 ? "Да" : "Нет"}
+                </strong>
                 <em>{formatPages(chapter.pages)}</em>
                 <Link className="admin-list__edit" to={`/admin/chapters/${chapter.id}`}>Редактировать →</Link>
               </div>

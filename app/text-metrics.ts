@@ -9,15 +9,23 @@ export function countTotalPages(texts: string[]) {
   return countPages(texts.join("\n\n"));
 }
 
-export function formatPages(pages: number) {
-  const lastTwo = pages % 100;
-  const last = pages % 10;
+function formatCount(value: number, one: string, few: string, many: string) {
+  const lastTwo = value % 100;
+  const last = value % 10;
   const word = lastTwo >= 11 && lastTwo <= 14
-    ? "страниц"
+    ? many
     : last === 1
-      ? "страница"
+      ? one
       : last >= 2 && last <= 4
-        ? "страницы"
-        : "страниц";
-  return `${pages} ${word}`;
+        ? few
+        : many;
+  return `${value} ${word}`;
+}
+
+export function formatPages(pages: number) {
+  return formatCount(pages, "страница", "страницы", "страниц");
+}
+
+export function formatChapters(chapters: number) {
+  return formatCount(chapters, "глава", "главы", "глав");
 }

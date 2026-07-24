@@ -2,7 +2,7 @@ import type { Route } from "./+types/home";
 import { Link } from "react-router";
 import { Header } from "../components/header";
 import { getBookSettings, getPublishedChapters } from "../database.server";
-import { countTotalPages, formatPages } from "../text-metrics";
+import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const book = loaderData?.book;
@@ -33,12 +33,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div className="hero__content">
             <h1>{book.title}</h1>
             <p className="hero__lead">{book.description}</p>
-            <a className="hero__button" href="#chapters">
+            <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].slug}` : "/#chapters"}>
               Начать читать <span aria-hidden="true">↓</span>
-            </a>
+            </Link>
           </div>
           <div className="hero__aside">
-            <span>{String(chapters.length).padStart(2, "0")} главы · {formatPages(totalPages)}</span>
+            <span>{formatChapters(chapters.length)} · {formatPages(totalPages)}</span>
           </div>
         </section>
 
