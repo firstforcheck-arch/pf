@@ -1,30 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigation } from "react-router";
 
-const banners = ["/zradnyk.png", "/zradnyk2.png", "/zradnyk3.png"];
+const banners = [
+  { desktop: "/zradnyk.png", mobile: "/zradnyk_mobile.png" },
+  { desktop: "/zradnyk2.png", mobile: "/zradnyk_mobile2.png" },
+  { desktop: "/zradnyk3.png", mobile: "/zradnyk_mobile3.png" },
+];
 const DISPLAY_TIME = 850;
 
-function randomBanner(previous?: string) {
-  const choices = banners.filter((banner) => banner !== previous);
-  return choices[Math.floor(Math.random() * choices.length)] ?? banners[0];
+function randomBannerIndex(previous?: number) {
+  const choices = banners.map((_, index) => index).filter((index) => index !== previous);
+  return choices[Math.floor(Math.random() * choices.length)] ?? 0;
 }
 
 export function RouteLoader() {
   const location = useLocation();
   const navigation = useNavigation();
   const [visible, setVisible] = useState(true);
-  const [banner, setBanner] = useState(banners[0]);
+  const [bannerIndex, setBannerIndex] = useState(0);
   const firstRender = useRef(true);
   const timer = useRef<number | undefined>(undefined);
 
   const show = () => {
     window.clearTimeout(timer.current);
-    setBanner((current) => randomBanner(current));
+    setBannerIndex((current) => randomBannerIndex(current));
     setVisible(true);
   };
 
   useEffect(() => {
-    setBanner(randomBanner());
+    setBannerIndex(randomBannerIndex());
     timer.current = window.setTimeout(() => setVisible(false), DISPLAY_TIME);
     return () => window.clearTimeout(timer.current);
   }, []);
@@ -49,7 +53,10 @@ export function RouteLoader() {
       aria-hidden={!visible}
       aria-live="polite"
     >
-      <img className="route-loader__image" src={banner} alt="" />
+      <picture>
+        <source media="(max-width: 700px)" srcSet={banners[bannerIndex].mobile} />
+        <img className="route-loader__image" src={banners[bannerIndex].desktop} alt="" />
+      </picture>
       <div className="route-loader__veil" />
       <div className="route-loader__status">
         <span className="route-loader__ring" />
