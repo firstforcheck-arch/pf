@@ -1,4 +1,4 @@
-import { data, Form, redirect } from "react-router";
+import { data, Form, redirect, useNavigate } from "react-router";
 import type { Route } from "./+types/admin-chapter";
 import { requireAdmin } from "../auth.server";
 import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter, setChapterPublished } from "../database.server";
@@ -52,6 +52,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
 export default function AdminChapter({ loaderData, actionData }: Route.ComponentProps) {
   const { chapter, otherChapterTexts } = loaderData;
+  const navigate = useNavigate();
   const [content, setContent] = useState(chapter.content);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
@@ -63,7 +64,13 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
         <a className="header-button" href={`/chapters/${chapter.slug}`}>Читать</a>
       )} />
       <section className="admin-shell admin-shell--editor">
-        <p className="eyebrow">Редактор</p>
+        <div className="editor-heading-row">
+          <p className="eyebrow">Редактор</p>
+          <button className="editor-back-button" type="button" onClick={() => navigate(-1)}>
+            <span aria-hidden="true">←</span>
+            Вернуться
+          </button>
+        </div>
         <h1>{chapter.title}</h1>
         <div className="editor-metrics" aria-live="polite">
           <div>
@@ -74,7 +81,7 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
             <span>Вся работа</span>
             <b>{formatPages(totalPages)}</b>
           </div>
-          <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString("ru-RU")} знаков в текущей главе · 1800 знаков на страницу</small>
+          <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString("ru-RU")} символов · 1800 символов на страницу</small>
         </div>
         <Form method="post" className="editor-form">
           <div className="chapter-position-note">Глава {chapter.number} · адрес /chapters/{chapter.slug}</div>

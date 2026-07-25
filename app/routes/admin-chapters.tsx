@@ -115,7 +115,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
               <strong>{formatChapters(loaderData.chapters.length)}</strong>
               <b>{formatPages(loaderData.totalPages)}</b>
             </div>
-            <small>Расчёт: 1800 знаков с пробелами на страницу</small>
+            <small>Расчёт: 1800 символов на страницу</small>
           </div>
           <Form method="post">
             <input type="hidden" name="intent" value="create-chapter" />
