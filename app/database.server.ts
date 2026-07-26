@@ -224,6 +224,11 @@ try {
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
+try {
+  database.exec("ALTER TABLE chapters ADD COLUMN published_before_work_hide INTEGER");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
 database.exec("UPDATE chapters SET work_id = 1 WHERE work_id IS NULL AND EXISTS (SELECT 1 FROM works WHERE id = 1)");
 database.exec("UPDATE chapters SET sort_order = id WHERE sort_order = 0");
 
@@ -598,8 +603,40 @@ export function saveWork(id: number, settings: BookSettings) {
 }
 
 export function setWorkPublished(id: number, published: boolean) {
-  database.prepare("UPDATE works SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    .run(published ? 1 : 0, id);
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const work = database.prepare("SELECT published FROM works WHERE id = ?")
+      .get(id) as { published: number } | undefined;
+    if (!work || work.published === (published ? 1 : 0)) {
+      database.exec("COMMIT");
+      return;
+    }
+
+    if (published) {
+      database.prepare(`
+        UPDATE chapters
+        SET published = COALESCE(published_before_work_hide, published),
+            published_before_work_hide = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE work_id = ?
+      `).run(id);
+    } else {
+      database.prepare(`
+        UPDATE chapters
+        SET published_before_work_hide = published,
+            published = 0,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE work_id = ?
+      `).run(id);
+    }
+
+    database.prepare("UPDATE works SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+      .run(published ? 1 : 0, id);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function deleteWork(id: number) {

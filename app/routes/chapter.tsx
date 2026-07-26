@@ -1,6 +1,7 @@
 import type { Route } from "./+types/chapter";
-import { data, Form, Link, useRouteLoaderData, useSearchParams } from "react-router";
+import { data, Form, isRouteErrorResponse, Link, useRouteLoaderData, useSearchParams } from "react-router";
 import { Header } from "../components/header";
+import { WorkUnavailable } from "../components/work-unavailable";
 import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
@@ -48,6 +49,11 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (content.length > 2000) return data({ error: "Комментарий не должен превышать 2000 символов." }, { status: 400 });
   createComment(chapter.id, user.id, content);
   return { error: null };
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const unavailable = isRouteErrorResponse(error) && error.status === 404;
+  return <WorkUnavailable notFound={unavailable} />;
 }
 
 export default function ChapterPage({ loaderData, actionData }: Route.ComponentProps) {

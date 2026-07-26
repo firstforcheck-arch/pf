@@ -1,7 +1,8 @@
 import type { Route } from "./+types/work";
 import { useEffect } from "react";
-import { Form, Link, useLocation } from "react-router";
+import { Form, isRouteErrorResponse, Link, useLocation } from "react-router";
 import { Header } from "../components/header";
+import { WorkUnavailable } from "../components/work-unavailable";
 import { getPublishedChapters, getWorkBySlug, isFollowingWork, setWorkFollowing } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
@@ -29,6 +30,11 @@ export async function action({ params, request }: Route.ActionArgs) {
     setWorkFollowing(user.id, book.id, form.get("following") === "yes");
   }
   return { ok: true };
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const unavailable = isRouteErrorResponse(error) && error.status === 404;
+  return <WorkUnavailable notFound={unavailable} />;
 }
 
 export default function Work({ loaderData }: Route.ComponentProps) {

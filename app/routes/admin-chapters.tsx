@@ -94,6 +94,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
   const reorderFetcher = useFetcher();
   const [chapters, setChapters] = useState(loaderData.chapters);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
 
   useEffect(() => setChapters(loaderData.chapters), [loaderData.chapters]);
 
@@ -150,15 +151,13 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
         </div>
 
         <div className="admin-section">
-          <Form method="post" className={`publication-zone ${loaderData.book.published === 1 ? "publication-zone--published" : ""}`}>
-            <input type="hidden" name="intent" value="toggle-work-publication" />
-            <input type="hidden" name="published" value={loaderData.book.published === 1 ? "no" : "yes"} />
+          <div className={`publication-zone ${loaderData.book.published === 1 ? "publication-zone--published" : ""}`}>
             <div>
               <strong>{loaderData.book.published === 1 ? text("Работа опубликована", "Роботу опубліковано") : text("Работа скрыта", "Роботу приховано")}</strong>
               <small>{text("Скрытая работа и её главы доступны только владельцу и администратору.", "Прихована робота та її глави доступні лише власнику й адміністратору.")}</small>
             </div>
-            <button type="submit">{loaderData.book.published === 1 ? text("Скрыть работу", "Приховати роботу") : text("Опубликовать работу", "Опублікувати роботу")}</button>
-          </Form>
+            <button type="button" onClick={() => setPublicationDialogOpen(true)}>{loaderData.book.published === 1 ? text("Скрыть работу", "Приховати роботу") : text("Опубликовать работу", "Опублікувати роботу")}</button>
+          </div>
         </div>
 
         <div className="admin-section">
@@ -209,6 +208,27 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
           </div>
         </div>
       </section>
+      {publicationDialogOpen && (
+        <div className="confirm-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPublicationDialogOpen(false);
+        }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="work-publication-title">
+            <p className="eyebrow">{text("Видимость работы", "Видимість роботи")}</p>
+            <h2 id="work-publication-title">{loaderData.book.published === 1 ? text("Скрыть работу?", "Приховати роботу?") : text("Опубликовать работу?", "Опублікувати роботу?")}</h2>
+            <p>{loaderData.book.published === 1
+              ? text("Работа и все её главы исчезнут из публичного доступа. Вернуть их можно в любой момент.", "Робота та всі її глави зникнуть із публічного доступу. Повернути їх можна будь-коли.")
+              : text("Работа появится в каталоге, а опубликованные главы станут доступны читателям.", "Робота з’явиться в каталозі, а опубліковані глави стануть доступними читачам.")}</p>
+            <div className="confirm-modal__actions">
+              <button type="button" onClick={() => setPublicationDialogOpen(false)}>{text("Отмена", "Скасувати")}</button>
+              <Form method="post" onSubmit={() => setPublicationDialogOpen(false)}>
+                <input type="hidden" name="intent" value="toggle-work-publication" />
+                <input type="hidden" name="published" value={loaderData.book.published === 1 ? "no" : "yes"} />
+                <button type="submit">{loaderData.book.published === 1 ? text("Да, скрыть", "Так, приховати") : text("Да, опубликовать", "Так, опублікувати")}</button>
+              </Form>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
