@@ -252,7 +252,7 @@ function CoverEditor({
             <>
               <img src={previewUrl} alt={text("Предпросмотр обложки", "Попередній перегляд обкладинки")} style={{ transform: coverTransform(position.x, position.y, zoom) }} />
               <span className="cover-editor__preview-overlay" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M7 7.5h2.1l1.2-2h3.4l1.2 2H17a2 2 0 0 1 2 2v6.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2Z" /><circle cx="12" cy="12.7" r="3" /></svg>
+                <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="3" /></svg>
               </span>
             </>
           ) : <span>{text("Обложка не загружена", "Обкладинку не завантажено")}</span>}
