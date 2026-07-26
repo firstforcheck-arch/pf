@@ -157,10 +157,28 @@ function ProfileMenu({
           <button type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)}>×</button>
         </div>
         <nav>
-          <Link to="/works" onClick={() => setOpen(false)}>
+          {user && (
+            <Link to="/profile" onClick={() => setOpen(false)}>
+              <span>{text("Профиль", "Профіль")}</span>
+              <b aria-hidden="true">→</b>
+            </Link>
+          )}
+          <Link className="profile-menu__works-link" to="/works" onClick={() => setOpen(false)}>
             <span>{text("Работы", "Роботи")}</span>
             <b aria-hidden="true">→</b>
           </Link>
+          {(user?.role === "admin" || user?.accountPlus === 1) && (
+            <Link to={editorTo} onClick={() => setOpen(false)}>
+              <span>{text("Редактор", "Редактор")}</span>
+              <b aria-hidden="true">→</b>
+            </Link>
+          )}
+          {user?.role === "admin" && (
+            <Link to="/admin/users" onClick={() => setOpen(false)}>
+              <span>{text("Пользователи", "Користувачі")}</span>
+              <b aria-hidden="true">→</b>
+            </Link>
+          )}
           <div className="profile-menu__theme">
             <span>{text("Тёмная тема", "Темна тема")}</span>
             <ThemeToggle className="theme-toggle--mobile" showLabel />
@@ -169,18 +187,6 @@ function ProfileMenu({
             <span>{text("Язык", "Мова")}</span>
             <LanguageToggle />
           </div>
-          {user && (
-            <Link to="/profile" onClick={() => setOpen(false)}>
-              <span>{text("Профиль", "Профіль")}</span>
-              <b aria-hidden="true">→</b>
-            </Link>
-          )}
-          {(user?.role === "admin" || user?.accountPlus === 1) && (
-            <Link to={editorTo} onClick={() => setOpen(false)}>
-              <span>{text("Редактор", "Редактор")}</span>
-              <b aria-hidden="true">→</b>
-            </Link>
-          )}
           {!user && (
             <>
               <Link to="/login" onClick={() => setOpen(false)}><span>{text("Вход", "Вхід")}</span><b aria-hidden="true">→</b></Link>

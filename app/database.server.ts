@@ -325,6 +325,27 @@ export function findUserById(id: number) {
     .get(id) as PublicUser | undefined;
 }
 
+export function getUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "") {
+  const usernameFilter = `%${username.trim()}%`;
+  const emailFilter = `%${email.trim()}%`;
+  const accountPlusFilter = accessLevel === "account-plus" ? 1 : accessLevel === "reader" ? 0 : null;
+  return database.prepare(`
+    SELECT id, username, email, avatar_url AS avatarUrl, role,
+      account_plus AS accountPlus, last_seen AS lastSeen
+    FROM users
+    WHERE id <> ?
+      AND (? = '%%' OR username LIKE ? COLLATE NOCASE)
+      AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)
+      AND (? IS NULL OR account_plus = ?)
+    ORDER BY username COLLATE NOCASE, id
+  `).all(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter) as unknown as PublicUser[];
+}
+
+export function countUsersForAdmin(adminId: number) {
+  return (database.prepare("SELECT COUNT(*) AS count FROM users WHERE id <> ?")
+    .get(adminId) as { count: number }).count;
+}
+
 export function touchUser(id: number) {
   database.prepare("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?").run(id);
 }

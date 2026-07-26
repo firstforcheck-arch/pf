@@ -15,6 +15,7 @@ export default [
   route("profile", "routes/profile.tsx"),
   route("notifications", "routes/notifications.tsx"),
   route("events", "routes/events.ts"),
+  route("admin/users", "routes/admin-users.tsx"),
   route("editor", "routes/editor.tsx"),
   route("editor/works/:workId", "routes/admin-chapters.tsx"),
   route("editor/works/:workId/chapters/:chapterId", "routes/admin-chapter.tsx"),

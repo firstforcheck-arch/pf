@@ -138,12 +138,14 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
           {comments.length === 0 && <p className="comments-empty">{text("Комментариев пока нет.", "Коментарів поки немає.")}</p>}
           {comments.map((comment) => (
             <article className="comment" key={comment.id}>
-              {comment.user.avatarUrl
-                ? <img src={comment.user.avatarUrl} alt="" />
-                : <span className="comment__avatar" aria-hidden="true">{comment.user.username.slice(0, 1).toUpperCase()}</span>}
+              <Link className="comment__author-avatar" to={`/users/${encodeURIComponent(comment.user.username)}`} aria-label={comment.user.username}>
+                {comment.user.avatarUrl
+                  ? <img className="comment__avatar" src={comment.user.avatarUrl} alt="" />
+                  : <span className="comment__avatar" aria-hidden="true">{comment.user.username.slice(0, 1).toUpperCase()}</span>}
+              </Link>
               <div>
                 <header>
-                  <strong>{comment.user.username}</strong>
+                  <Link className="comment__author-name" to={`/users/${encodeURIComponent(comment.user.username)}`}>{comment.user.username}</Link>
                   <div className="comment__meta">
                     <time dateTime={comment.createdAt}>{new Date(`${comment.createdAt}Z`).toLocaleString(language === "uk" ? "uk-UA" : "ru-RU", {
                       day: "2-digit",
