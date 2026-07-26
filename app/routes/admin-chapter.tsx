@@ -1,4 +1,4 @@
-import { data, Form, redirect, useNavigate } from "react-router";
+import { data, Form, Link, redirect, useNavigate } from "react-router";
 import type { Route } from "./+types/admin-chapter";
 import { requireAdmin } from "../auth.server";
 import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter, setChapterPublished } from "../database.server";
@@ -6,6 +6,7 @@ import { Header } from "../components/header";
 import { useState } from "react";
 import { countPages, countTotalPages, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
+import { sendNewChapterNotification } from "../mail.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireAdmin(request);
@@ -28,7 +29,9 @@ export async function action({ request, params }: Route.ActionArgs) {
     return redirect("/admin/chapters");
   }
   if (form.get("intent") === "toggle-publication") {
-    setChapterPublished(current.id, current.published !== 1);
+    const willPublish = current.published !== 1;
+    setChapterPublished(current.id, willPublish);
+    if (willPublish) await sendNewChapterNotification(current);
     return redirect(`/admin/chapters/${current.slug}`);
   }
 
@@ -63,11 +66,16 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
   return (
     <main className="admin-page">
       <Header beforeAction={(
-        <a className="header-button" href={`/chapters/${chapter.slug}`}>{text("Читать", "Читати")}</a>
+        <>
+          <Link className="header-button preview-link--desktop" to={`/chapters/${chapter.slug}?preview=1`}>{text("Читать", "Читати")}</Link>
+          <Link className="preview-toggle preview-toggle--mobile" to={`/chapters/${chapter.slug}?preview=1`} aria-label={text("Открыть предпросмотр", "Відкрити попередній перегляд")} title={text("Предпросмотр", "Попередній перегляд")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="3" /></svg>
+          </Link>
+        </>
       )} />
       <section className="admin-shell admin-shell--editor">
         <div className="editor-heading-row">
-          <p className="eyebrow">{text("Редактор", "Редактор")}</p>
+          <Link className="eyebrow editor-home-link" to="/admin/chapters">{text("Редактор", "Редактор")}</Link>
           <button className="editor-back-button" type="button" onClick={() => navigate(-1)}>
             <span aria-hidden="true">←</span>
             {text("Вернуться", "Повернутися")}

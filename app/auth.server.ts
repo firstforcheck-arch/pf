@@ -1,7 +1,14 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { createCookieSessionStorage, redirect } from "react-router";
-import { countUsers, createUser, findUserByEmail, findUserById } from "./database.server";
+import {
+  countUsers,
+  createUser,
+  findUserByEmail,
+  findUserById,
+  findUserByUsername,
+  updateUserPassword,
+} from "./database.server";
 
 const scrypt = promisify(scryptCallback);
 const sessionSecret = process.env.SESSION_SECRET
@@ -21,7 +28,7 @@ const { getSession, commitSession, destroySession } = createCookieSessionStorage
   },
 });
 
-async function hashPassword(password: string) {
+export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const derived = await scrypt(password, salt, 64) as Buffer;
   return `${salt}:${derived.toString("hex")}`;
@@ -35,15 +42,24 @@ async function verifyPassword(password: string, stored: string) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-export async function register(email: string, password: string) {
+export async function register(username: string, password: string) {
   const role = countUsers() === 0 ? "admin" : "reader";
-  return createUser(email, await hashPassword(password), role);
+  return createUser(username, await hashPassword(password), role);
 }
 
-export async function authenticate(email: string, password: string) {
-  const user = findUserByEmail(email);
+export async function authenticate(identifier: string, password: string) {
+  const user = findUserByUsername(identifier) ?? findUserByEmail(identifier.toLowerCase());
   if (!user || !(await verifyPassword(password, user.passwordHash))) return null;
   return user.id;
+}
+
+export async function verifyUserPassword(userId: number, password: string) {
+  const user = findUserByUsername(findUserById(userId)?.username ?? "");
+  return Boolean(user && await verifyPassword(password, user.passwordHash));
+}
+
+export async function changeUserPassword(userId: number, password: string) {
+  updateUserPassword(userId, await hashPassword(password));
 }
 
 export async function getCurrentUser(request: Request) {

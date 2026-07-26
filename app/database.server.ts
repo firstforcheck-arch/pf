@@ -2,7 +2,19 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export type PublicUser = { id: number; email: string; role: "admin" | "reader" };
+export type PublicUser = {
+  id: number;
+  username: string;
+  email: string | null;
+  avatarUrl: string | null;
+  role: "admin" | "reader";
+};
+export type CommentRecord = {
+  id: number;
+  content: string;
+  createdAt: string;
+  user: Pick<PublicUser, "id" | "username" | "avatarUrl">;
+};
 export type ChapterRecord = {
   id: number;
   slug: string;
@@ -24,7 +36,9 @@ database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 database.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    email TEXT UNIQUE COLLATE NOCASE,
+    avatar_url TEXT,
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'reader' CHECK(role IN ('admin', 'reader')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -47,6 +61,63 @@ database.exec(`
   );
   INSERT OR IGNORE INTO book_settings (id, title, description)
   VALUES (1, 'Phantom Freedom', 'История о свободе, памяти и цене решений, которые продолжают преследовать нас даже тогда, когда прошлое кажется окончательно забытым.');
+`);
+
+const userColumns = database.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+if (!userColumns.some((column) => column.name === "username")) {
+  database.exec("PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE");
+  try {
+    database.exec(`
+      ALTER TABLE users RENAME TO users_legacy;
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        email TEXT UNIQUE COLLATE NOCASE,
+        avatar_url TEXT,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'reader' CHECK(role IN ('admin', 'reader')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO users (id, username, email, password_hash, role, created_at)
+      SELECT id,
+        CASE
+          WHEN instr(email, '@') > 1 AND (
+            SELECT COUNT(*) FROM users_legacy AS other
+            WHERE lower(substr(other.email, 1, instr(other.email, '@') - 1))
+              = lower(substr(users_legacy.email, 1, instr(users_legacy.email, '@') - 1))
+          ) = 1 THEN substr(email, 1, instr(email, '@') - 1)
+          WHEN instr(email, '@') > 1 THEN substr(email, 1, instr(email, '@') - 1) || '_' || id
+          ELSE 'user_' || id
+        END,
+        email, password_hash, role, created_at
+      FROM users_legacy;
+      DROP TABLE users_legacy;
+      COMMIT;
+    `);
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  } finally {
+    database.exec("PRAGMA foreign_keys = ON");
+  }
+}
+
+database.exec(`
+  CREATE TABLE IF NOT EXISTS comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS comments_chapter_created_idx ON comments(chapter_id, created_at);
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+  );
 `);
 
 try {
@@ -77,23 +148,84 @@ export function countUsers() {
   return (database.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number }).count;
 }
 
-export function createUser(email: string, passwordHash: string, role: PublicUser["role"]) {
+export function createUser(username: string, passwordHash: string, role: PublicUser["role"]) {
   const result = database
-    .prepare("INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)")
-    .run(email, passwordHash, role);
+    .prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)")
+    .run(username, passwordHash, role);
   return Number(result.lastInsertRowid);
+}
+
+export function findUserByUsername(username: string) {
+  return database
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role FROM users WHERE username = ?")
+    .get(username) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserByEmail(email: string) {
   return database
-    .prepare("SELECT id, email, password_hash AS passwordHash, role FROM users WHERE email = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role FROM users WHERE email = ?")
     .get(email) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserById(id: number) {
   return database
-    .prepare("SELECT id, email, role FROM users WHERE id = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, role FROM users WHERE id = ?")
     .get(id) as PublicUser | undefined;
+}
+
+export function updateUserProfile(id: number, username: string, email: string | null, avatarUrl: string | null) {
+  database.prepare("UPDATE users SET username = ?, email = ?, avatar_url = ? WHERE id = ?")
+    .run(username, email, avatarUrl, id);
+}
+
+export function updateUserPassword(id: number, passwordHash: string) {
+  database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
+}
+
+export function getChapterComments(chapterId: number) {
+  const rows = database.prepare(`
+    SELECT comments.id, comments.content, comments.created_at AS createdAt,
+      users.id AS userId, users.username, users.avatar_url AS avatarUrl
+    FROM comments JOIN users ON users.id = comments.user_id
+    WHERE comments.chapter_id = ?
+    ORDER BY comments.created_at, comments.id
+  `).all(chapterId) as unknown as Array<{
+    id: number; content: string; createdAt: string; userId: number; username: string; avatarUrl: string | null;
+  }>;
+  return rows.map(({ userId, username, avatarUrl, ...comment }) => ({
+    ...comment,
+    user: { id: userId, username, avatarUrl },
+  })) as CommentRecord[];
+}
+
+export function createComment(chapterId: number, userId: number, content: string) {
+  database.prepare("INSERT INTO comments (chapter_id, user_id, content) VALUES (?, ?, ?)")
+    .run(chapterId, userId, content);
+}
+
+export function deleteComment(commentId: number, chapterId: number) {
+  database.prepare("DELETE FROM comments WHERE id = ? AND chapter_id = ?").run(commentId, chapterId);
+}
+
+export function getNotificationRecipients() {
+  return database.prepare("SELECT email FROM users WHERE email IS NOT NULL AND email <> ''")
+    .all() as { email: string }[];
+}
+
+export function createPasswordResetToken(userId: number, tokenHash: string, expiresAt: string) {
+  database.prepare("DELETE FROM password_reset_tokens WHERE user_id = ? OR expires_at < CURRENT_TIMESTAMP").run(userId);
+  database.prepare("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)")
+    .run(userId, tokenHash, expiresAt);
+}
+
+export function consumePasswordResetToken(tokenHash: string) {
+  const token = database.prepare(`
+    SELECT id, user_id AS userId FROM password_reset_tokens
+    WHERE token_hash = ? AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP
+  `).get(tokenHash) as { id: number; userId: number } | undefined;
+  if (!token) return null;
+  database.prepare("UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = ?").run(token.id);
+  return token.userId;
 }
 
 export function getPublishedChapters() {

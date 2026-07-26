@@ -5,7 +5,10 @@ export default [
   route("chapters/:chapterId", "routes/chapter.tsx"),
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
   route("logout", "routes/logout.tsx"),
+  route("profile", "routes/profile.tsx"),
   route("admin/chapters", "routes/admin-chapters.tsx"),
   route("admin/chapters/:chapterId", "routes/admin-chapter.tsx"),
 ] satisfies RouteConfig;

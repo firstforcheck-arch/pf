@@ -15,10 +15,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
-  const email = String(form.get("email") ?? "").trim().toLowerCase();
+  const identifier = String(form.get("identifier") ?? "").trim();
   const password = String(form.get("password") ?? "");
-  const userId = await authenticate(email, password);
-  if (!userId) return data({ error: "Неверная почта или пароль." }, { status: 400 });
+  const userId = await authenticate(identifier, password);
+  if (!userId) return data({ error: "Неверный юзернейм, почта или пароль." }, { status: 400 });
   return createUserSession(request, userId);
 }
 
@@ -31,11 +31,12 @@ export default function Login({ actionData }: Route.ComponentProps) {
         <p className="eyebrow">{text("Личный кабинет", "Особистий кабінет")}</p>
         <h1>{text("Вход", "Вхід")}</h1>
         <Form method="post" className="auth-form">
-          <label>{text("Почта", "Пошта")}<input type="email" name="email" autoComplete="email" required /></label>
+          <label>{text("Юзернейм или почта", "Юзернейм або пошта")}<input name="identifier" autoComplete="username" required /></label>
           <label>{text("Пароль", "Пароль")}<input type="password" name="password" autoComplete="current-password" required /></label>
-          {actionData?.error && <p className="form-error">{text(actionData.error, "Неправильна пошта або пароль.")}</p>}
+          {actionData?.error && <p className="form-error">{text(actionData.error, "Неправильний юзернейм, пошта або пароль.")}</p>}
           <button type="submit">{text("Войти", "Увійти")}</button>
         </Form>
+        <p className="auth-switch"><Link to="/forgot-password">{text("Забыли пароль?", "Забули пароль?")}</Link></p>
         <p className="auth-switch">{text("Нет аккаунта?", "Немає облікового запису?")} <Link to="/register">{text("Зарегистрироваться", "Зареєструватися")}</Link></p>
       </section>
     </main>

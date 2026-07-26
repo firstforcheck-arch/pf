@@ -12,7 +12,7 @@ type HeaderProps = {
 export function Header({ variant = "solid", action, beforeAction, profileEditorTo = "/admin/chapters" }: HeaderProps) {
   const { text } = useLocalization();
   const rootData = useRouteLoaderData<{
-    user: { email: string; role: "admin" | "reader" } | null;
+    user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null;
     book: { title: string; description: string };
   }>("root");
   const user = rootData?.user;
@@ -27,19 +27,7 @@ export function Header({ variant = "solid", action, beforeAction, profileEditorT
         <ThemeToggle className="theme-toggle--desktop" />
         <LanguageToggle className="language-toggle--desktop" />
         {beforeAction}
-        {action ?? (user ? (
-          <>
-            {user.role === "admin" && <Link className="header-button" to="/admin/chapters">{text("Редактор", "Редактор")}</Link>}
-            <Form method="post" action="/logout">
-              <button className="header-button header-button--accent" type="submit">{text("Выйти", "Вийти")}</button>
-            </Form>
-          </>
-        ) : (
-          <>
-            <Link className="header-button" to="/login">{text("Вход", "Вхід")}</Link>
-            <Link className="header-button header-button--accent" to="/register">{text("Регистрация", "Реєстрація")}</Link>
-          </>
-        ))}
+        {action}
         <ProfileMenu user={user} editorTo={profileEditorTo} />
       </div>
     </header>
@@ -50,7 +38,7 @@ function ProfileMenu({
   user,
   editorTo,
 }: {
-  user: { email: string; role: "admin" | "reader" } | null | undefined;
+  user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null | undefined;
   editorTo: string;
 }) {
   const { text } = useLocalization();
@@ -67,6 +55,7 @@ function ProfileMenu({
 
   useEffect(() => {
     if (!open) return;
+    if (!window.matchMedia("(max-width: 700px)").matches) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -81,19 +70,18 @@ function ProfileMenu({
         type="button"
         aria-label={text("Открыть меню профиля", "Відкрити меню профілю")}
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((value) => !value)}
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="8" r="3.5" />
-          <path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6" />
-        </svg>
+        {user?.avatarUrl
+          ? <img className="profile-avatar" src={user.avatarUrl} alt="" />
+          : <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5" /><path d="M5 20c.7-4 3-6 7-6s6.3 2 7 6" /></svg>}
       </button>
       <button className="profile-menu__backdrop" type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)} />
       <aside className="profile-menu__drawer" aria-hidden={!open} aria-label={text("Меню профиля", "Меню профілю")}>
         <div className="profile-menu__heading">
           <div>
             <small>{text("Профиль", "Профіль")}</small>
-            <strong>{user?.email ?? text("Гость", "Гість")}</strong>
+            <strong>{user?.username ?? text("Гость", "Гість")}</strong>
           </div>
           <button type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)}>×</button>
         </div>
@@ -112,12 +100,13 @@ function ProfileMenu({
               <b aria-hidden="true">→</b>
             </Link>
           )}
-          {user ? (
-            <Link to="/#chapters" onClick={() => setOpen(false)}>
-              <span>{text("Все главы", "Усі глави")}</span>
+          {user && (
+            <Link to="/profile" onClick={() => setOpen(false)}>
+              <span>{text("Настройки профиля", "Налаштування профілю")}</span>
               <b aria-hidden="true">→</b>
             </Link>
-          ) : (
+          )}
+          {!user && (
             <>
               <Link to="/login" onClick={() => setOpen(false)}><span>{text("Вход", "Вхід")}</span><b aria-hidden="true">→</b></Link>
               <Link to="/register" onClick={() => setOpen(false)}><span>{text("Регистрация", "Реєстрація")}</span><b aria-hidden="true">→</b></Link>
