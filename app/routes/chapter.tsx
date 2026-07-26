@@ -1,7 +1,7 @@
 import type { Route } from "./+types/chapter";
 import { data, Form, Link, useRouteLoaderData, useSearchParams } from "react-router";
 import { Header } from "../components/header";
-import { createComment, deleteComment, getBookSettings, getChapter, getChapterBySlug, getChapterComments, getPublishedChapters } from "../database.server";
+import { createComment, deleteComment, getBookSettings, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
@@ -18,7 +18,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const chapters = getPublishedChapters();
   const publishedChapter = getChapter(params.chapterId);
   const user = publishedChapter ? null : await getCurrentUser(request);
-  const chapter = publishedChapter ?? (user?.role === "admin" ? getChapterBySlug(params.chapterId) : undefined);
+  const chapter = publishedChapter ?? (user?.role === "admin" ? getChapterByPublicSlug(params.chapterId) : undefined);
   return { chapter, chapters, book: getBookSettings(), comments: chapter ? getChapterComments(chapter.id) : [] };
 }
 
@@ -26,7 +26,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const user = await getCurrentUser(request);
   if (!user) return data({ error: "Войдите, чтобы оставить комментарий." }, { status: 401 });
   const publishedChapter = getChapter(params.chapterId);
-  const chapter = publishedChapter ?? (user.role === "admin" ? getChapterBySlug(params.chapterId) : undefined);
+  const chapter = publishedChapter ?? (user.role === "admin" ? getChapterByPublicSlug(params.chapterId) : undefined);
   if (!chapter) return data({ error: "Глава не найдена." }, { status: 404 });
   const form = await request.formData();
   if (form.get("intent") === "delete-comment") {
@@ -65,6 +65,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
   const chapterIndex = chapters.findIndex((item) => item.id === chapter.id);
   const previous = chapterIndex >= 0 ? chapters[chapterIndex - 1] : undefined;
   const next = chapterIndex >= 0 ? chapters[chapterIndex + 1] : undefined;
+  const publicNumber = chapterIndex >= 0 ? chapterIndex + 1 : chapter.number;
   const preview = searchParams.get("preview") === "1" && rootData?.user?.role === "admin";
 
   return (
@@ -81,8 +82,8 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
 
       <article className="reader__article">
         <div className="reader__intro">
-          <span className="reader__number">{chapter.number}</span>
-          <p className="eyebrow">{text("Глава", "Глава")} {chapter.slug}</p>
+          <span className="reader__number">{publicNumber}</span>
+          <p className="eyebrow">{text("Глава", "Глава")} {publicNumber}</p>
           <h1>{chapter.title}</h1>
           <ChapterPagination previous={previous} next={next} position="intro" preview={preview} />
           {chapter.subtitle ? (
@@ -177,7 +178,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
 }
 
 type PaginationChapter = {
-  slug: string;
+  publicSlug: string;
   title: string;
 };
 
@@ -226,7 +227,7 @@ function ChapterSelect({ current, chapters, preview }: { current: SelectChapter;
         aria-haspopup="listbox"
         onClick={() => setOpen((value) => !value)}
       >
-        <span>{text("Глава", "Глава")} {current.number} — {current.title}</span>
+        <span>{text("Глава", "Глава")} {Math.max(1, chapters.findIndex((item) => item.id === current.id) + 1)} — {current.title}</span>
         <i aria-hidden="true" />
       </button>
       {open && (
@@ -242,12 +243,12 @@ function ChapterSelect({ current, chapters, preview }: { current: SelectChapter;
             {chapters.map((item) => (
               <Link
                 className={item.id === current.id ? "chapter-select__option chapter-select__option--active" : "chapter-select__option"}
-                to={`/chapters/${item.slug}${preview ? "?preview=1" : ""}`}
+                to={`/chapters/${item.publicSlug}${preview ? "?preview=1" : ""}`}
                 aria-current={item.id === current.id ? "page" : undefined}
                 key={item.id}
                 onClick={() => setOpen(false)}
               >
-                <small>{text("Глава", "Глава")} {item.number}</small>
+                <small>{text("Глава", "Глава")} {chapters.findIndex((chapter) => chapter.id === item.id) + 1}</small>
                 <span>{item.title}</span>
               </Link>
             ))}
@@ -276,7 +277,7 @@ function ChapterPagination({
       aria-label={position === "intro" ? text("Навигация по главам перед текстом", "Навігація главами перед текстом") : text("Навигация по главам после текста", "Навігація главами після тексту")}
     >
       {previous ? (
-        <Link to={`/chapters/${previous.slug}${preview ? "?preview=1" : ""}`}>
+        <Link to={`/chapters/${previous.publicSlug}${preview ? "?preview=1" : ""}`}>
           <small>{text("Предыдущая глава", "Попередня глава")}</small>
           <span>← {previous.title}</span>
         </Link>
@@ -288,7 +289,7 @@ function ChapterPagination({
         </Link>
       )}
       {next ? (
-        <Link to={`/chapters/${next.slug}${preview ? "?preview=1" : ""}`} className="reader__next">
+        <Link to={`/chapters/${next.publicSlug}${preview ? "?preview=1" : ""}`} className="reader__next">
           <small>{text("Следующая глава", "Наступна глава")}</small>
           <span>{next.title} →</span>
         </Link>

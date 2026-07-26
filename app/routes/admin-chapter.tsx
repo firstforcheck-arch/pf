@@ -67,8 +67,8 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
     <main className="admin-page">
       <Header beforeAction={(
         <>
-          <Link className="header-button preview-link--desktop" to={`/chapters/${chapter.slug}?preview=1`}>{text("Читать", "Читати")}</Link>
-          <Link className="preview-toggle preview-toggle--mobile" to={`/chapters/${chapter.slug}?preview=1`} aria-label={text("Открыть предпросмотр", "Відкрити попередній перегляд")} title={text("Предпросмотр", "Попередній перегляд")}>
+          <Link className="header-button preview-link--desktop" to={`/chapters/${chapter.publicSlug}?preview=1`}>{text("Читать", "Читати")}</Link>
+          <Link className="preview-toggle preview-toggle--mobile" to={`/chapters/${chapter.publicSlug}?preview=1`} aria-label={text("Открыть предпросмотр", "Відкрити попередній перегляд")} title={text("Предпросмотр", "Попередній перегляд")}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="3" /></svg>
           </Link>
         </>
@@ -94,7 +94,7 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")} {text("символов", "символів")} · {text("1800 символов на страницу", "1800 символів на сторінку")}</small>
         </div>
         <Form method="post" className="editor-form">
-          <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · {text("адрес", "адреса")} /chapters/{chapter.slug}</div>
+          <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · {text("публичный адрес", "публічна адреса")} /chapters/{chapter.publicSlug}</div>
           <label>{text("Название", "Назва")}<input name="title" defaultValue={chapter.title} required /></label>
           <label>{text("Краткое описание", "Короткий опис")}<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
           <label>{text("Текст главы", "Текст глави")}<textarea className="editor-form__content" name="content" rows={28} value={content} onChange={(event) => setContent(event.currentTarget.value)} /></label>

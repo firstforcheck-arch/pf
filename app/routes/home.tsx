@@ -51,7 +51,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <div className="hero__content">
             <h1>{book.title}</h1>
             <p className="hero__lead">{book.description}</p>
-            <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].slug}` : "/#chapters"}>
+            <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].publicSlug}` : "/#chapters"}>
               {text("Начать читать", "Почати читати")} <span aria-hidden="true">↓</span>
             </Link>
           </div>
@@ -79,9 +79,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               <h2>{text("Главы", "Глави")}</h2>
             </div>
             <div className="chapter-list">
-              {chapters.map((chapter) => (
-                <Link className="chapter-card" to={`/chapters/${chapter.slug}`} key={chapter.id}>
-                  <span className="chapter-card__number">{chapter.number}</span>
+              {chapters.map((chapter, index) => (
+                <Link className="chapter-card" to={`/chapters/${chapter.publicSlug}`} key={chapter.id}>
+                  <span className="chapter-card__number">{index + 1}</span>
                   <span className="chapter-card__copy">
                     <b>{chapter.title}</b>
                     <small>{chapter.subtitle}</small>

@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 export type PublicUser = {
@@ -18,6 +19,7 @@ export type CommentRecord = {
 export type ChapterRecord = {
   id: number;
   slug: string;
+  publicSlug: string;
   number: string;
   title: string;
   subtitle: string;
@@ -126,6 +128,11 @@ try {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
 try {
+  database.exec("ALTER TABLE chapters ADD COLUMN public_slug TEXT");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
   database.exec("ALTER TABLE book_settings ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
@@ -135,13 +142,17 @@ database.exec("UPDATE chapters SET sort_order = id WHERE sort_order = 0");
 const chapterCount = database.prepare("SELECT COUNT(*) AS count FROM chapters").get() as { count: number };
 if (chapterCount.count === 0) {
   const insert = database.prepare(`
-    INSERT INTO chapters (slug, number, title, subtitle, reading_time, content)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO chapters (slug, public_slug, number, title, subtitle, reading_time, content)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  insert.run("1", "I", "Глава первая", "Начало истории.", "8 мин", "Текст первой главы появится здесь.");
-  insert.run("2", "II", "Глава вторая", "История продолжается.", "10 мин", "Текст второй главы появится здесь.");
-  insert.run("3", "III", "Глава третья", "Новый поворот.", "12 мин", "Текст третьей главы появится здесь.");
+  insert.run("1", randomUUID(), "I", "Глава первая", "Начало истории.", "8 мин", "Текст первой главы появится здесь.");
+  insert.run("2", randomUUID(), "II", "Глава вторая", "История продолжается.", "10 мин", "Текст второй главы появится здесь.");
+  insert.run("3", randomUUID(), "III", "Глава третья", "Новый поворот.", "12 мин", "Текст третьей главы появится здесь.");
 }
+const chaptersWithoutPublicSlug = database.prepare("SELECT id FROM chapters WHERE public_slug IS NULL OR public_slug = ''").all() as { id: number }[];
+const setPublicSlug = database.prepare("UPDATE chapters SET public_slug = ? WHERE id = ?");
+chaptersWithoutPublicSlug.forEach(({ id }) => setPublicSlug.run(randomUUID(), id));
+database.exec("CREATE UNIQUE INDEX IF NOT EXISTS chapters_public_slug_idx ON chapters(public_slug)");
 normalizeChapterOrder();
 
 export function countUsers() {
@@ -230,35 +241,42 @@ export function consumePasswordResetToken(tokenHash: string) {
 
 export function getPublishedChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE published = 1 ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
 export function getAllChapters() {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters ORDER BY sort_order, id
   `).all() as unknown as ChapterRecord[];
 }
 
-export function getChapter(slug: string) {
+export function getChapter(publicSlug: string) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE slug = ? AND published = 1
-  `).get(slug) as ChapterRecord | undefined;
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE public_slug = ? AND published = 1
+  `).get(publicSlug) as ChapterRecord | undefined;
 }
 
 export function getChapterBySlug(slug: string) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE slug = ?
   `).get(slug) as ChapterRecord | undefined;
 }
 
+export function getChapterByPublicSlug(publicSlug: string) {
+  return database.prepare(`
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE public_slug = ?
+  `).get(publicSlug) as ChapterRecord | undefined;
+}
+
 export function getChapterForEditing(slug: string) {
   return database.prepare(`
-    SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
     FROM chapters WHERE slug = ?
   `).get(slug) as ChapterRecord | undefined;
 }
@@ -297,10 +315,11 @@ export function createChapter() {
     WHERE slug GLOB '[0-9]*'
   `).get() as { slug: number };
   const slug = String(nextSlug.slug);
+  const publicSlug = randomUUID();
   database.prepare(`
-    INSERT INTO chapters (slug, number, title, subtitle, content, sort_order, published)
-    VALUES (?, ?, 'Новая глава', '', '', ?, 0)
-  `).run(slug, String(position), position);
+    INSERT INTO chapters (slug, public_slug, number, title, subtitle, content, sort_order, published)
+    VALUES (?, ?, ?, 'Новая глава', '', '', ?, 0)
+  `).run(slug, publicSlug, String(position), position);
   return slug;
 }
 

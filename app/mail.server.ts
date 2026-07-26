@@ -48,7 +48,7 @@ export async function sendNewChapterNotification(chapter: ChapterRecord) {
     await sendMail(
       sender,
       `Новая глава «${chapter.title}» — ${book.title}`,
-      `<p>Опубликована новая глава: <strong>${escapeHtml(chapter.title)}</strong>.</p><p><a href="${baseUrl}/chapters/${encodeURIComponent(chapter.slug)}">Читать главу</a></p>`,
+      `<p>Опубликована новая глава: <strong>${escapeHtml(chapter.title)}</strong>.</p><p><a href="${baseUrl}/chapters/${encodeURIComponent(chapter.publicSlug)}">Читать главу</a></p>`,
       recipients.slice(index, index + 50),
     );
   }
