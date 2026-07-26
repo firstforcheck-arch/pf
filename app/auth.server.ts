@@ -4,9 +4,12 @@ import { createCookieSessionStorage, redirect } from "react-router";
 import {
   countUsers,
   createUser,
+  ensureInitialWork,
   findUserByEmail,
   findUserById,
   findUserByUsername,
+  canManageWork,
+  touchUser,
   updateUserPassword,
 } from "./database.server";
 
@@ -43,8 +46,10 @@ async function verifyPassword(password: string, stored: string) {
 }
 
 export async function register(username: string, password: string) {
-  const role = countUsers() === 0 ? "admin" : "reader";
-  return createUser(username, await hashPassword(password), role);
+  const isFirstUser = countUsers() === 0;
+  const userId = createUser(isFirstUser ? "Phantom_Fighter" : username, await hashPassword(password), isFirstUser ? "admin" : "reader");
+  if (isFirstUser) ensureInitialWork(userId);
+  return userId;
 }
 
 export async function authenticate(identifier: string, password: string) {
@@ -65,7 +70,10 @@ export async function changeUserPassword(userId: number, password: string) {
 export async function getCurrentUser(request: Request) {
   const session = await getSession(request.headers.get("Cookie"));
   const userId = session.get("userId");
-  return userId ? findUserById(userId) ?? null : null;
+  if (!userId) return null;
+  const user = findUserById(userId) ?? null;
+  if (user) touchUser(user.id);
+  return user;
 }
 
 export async function createUserSession(request: Request, userId: number, destination = "/") {
@@ -78,6 +86,19 @@ export async function requireAdmin(request: Request) {
   const user = await getCurrentUser(request);
   if (!user) throw redirect("/login");
   if (user.role !== "admin") throw new Response("Недостаточно прав", { status: 403 });
+  return user;
+}
+
+export async function requireCreator(request: Request) {
+  const user = await getCurrentUser(request);
+  if (!user) throw redirect("/login");
+  if (user.role !== "admin" && user.accountPlus !== 1) throw new Response("Требуется Аккаунт+", { status: 403 });
+  return user;
+}
+
+export async function requireWorkManager(request: Request, workId: number) {
+  const user = await requireCreator(request);
+  if (!canManageWork(user, workId)) throw new Response("Недостаточно прав", { status: 403 });
   return user;
 }
 

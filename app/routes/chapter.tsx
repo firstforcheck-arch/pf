@@ -1,7 +1,7 @@
 import type { Route } from "./+types/chapter";
 import { data, Form, Link, useRouteLoaderData, useSearchParams } from "react-router";
 import { Header } from "../components/header";
-import { createComment, deleteComment, getBookSettings, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters } from "../database.server";
+import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
@@ -15,22 +15,30 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
-  const chapters = getPublishedChapters();
-  const publishedChapter = getChapter(params.chapterId);
-  const user = publishedChapter ? null : await getCurrentUser(request);
-  const chapter = publishedChapter ?? (user?.role === "admin" ? getChapterByPublicSlug(params.chapterId) : undefined);
-  return { chapter, chapters, book: getBookSettings(), comments: chapter ? getChapterComments(chapter.id) : [] };
+  const user = await getCurrentUser(request);
+  const publicBook = getWorkBySlug(params.workSlug);
+  const privateBook = publicBook ? undefined : getWorkBySlug(params.workSlug, true);
+  const book = publicBook ?? (privateBook && user && canManageWork(user, privateBook.id) ? privateBook : undefined);
+  if (!book) throw new Response("Работа не найдена", { status: 404 });
+  const chapters = getPublishedChapters(book.id);
+  const publishedChapter = book.published === 1 ? getChapter(book.id, params.chapterId) : undefined;
+  const chapter = publishedChapter ?? (user && canManageWork(user, book.id) ? getChapterByPublicSlug(book.id, params.chapterId) : undefined);
+  return { chapter, chapters, book, canManage: Boolean(user && canManageWork(user, book.id)), comments: chapter ? getChapterComments(chapter.id) : [] };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {
   const user = await getCurrentUser(request);
   if (!user) return data({ error: "Войдите, чтобы оставить комментарий." }, { status: 401 });
-  const publishedChapter = getChapter(params.chapterId);
-  const chapter = publishedChapter ?? (user.role === "admin" ? getChapterByPublicSlug(params.chapterId) : undefined);
+  const publicBook = getWorkBySlug(params.workSlug);
+  const privateBook = publicBook ? undefined : getWorkBySlug(params.workSlug, true);
+  const book = publicBook ?? (privateBook && canManageWork(user, privateBook.id) ? privateBook : undefined);
+  if (!book) return data({ error: "Работа не найдена." }, { status: 404 });
+  const publishedChapter = book.published === 1 ? getChapter(book.id, params.chapterId) : undefined;
+  const chapter = publishedChapter ?? (canManageWork(user, book.id) ? getChapterByPublicSlug(book.id, params.chapterId) : undefined);
   if (!chapter) return data({ error: "Глава не найдена." }, { status: 404 });
   const form = await request.formData();
   if (form.get("intent") === "delete-comment") {
-    if (user.role !== "admin") return data({ error: "Недостаточно прав." }, { status: 403 });
+    if (!canManageWork(user, book.id)) return data({ error: "Недостаточно прав." }, { status: 403 });
     deleteComment(Number(form.get("commentId")), chapter.id);
     return { error: null };
   }
@@ -44,7 +52,7 @@ export async function action({ params, request }: Route.ActionArgs) {
 
 export default function ChapterPage({ loaderData, actionData }: Route.ComponentProps) {
   const { language, text } = useLocalization();
-  const { chapter, chapters, comments } = loaderData;
+  const { chapter, chapters, comments, book, canManage } = loaderData;
   const rootData = useRouteLoaderData<{ user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null }>("root");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
   const [searchParams] = useSearchParams();
@@ -56,7 +64,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
         <div className="reader__empty-content">
           <p className="eyebrow">{text("Ошибка 404", "Помилка 404")}</p>
           <h1>{text("Такой главы пока нет", "Такої глави поки немає")}</h1>
-          <Link className="reader__back" to="/#chapters">← {text("Вернуться к содержанию", "Повернутися до змісту")}</Link>
+          <Link className="reader__back" to={`/works/${book.slug}#chapters`}>← {text("Вернуться к содержанию", "Повернутися до змісту")}</Link>
         </div>
       </main>
     );
@@ -66,17 +74,17 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
   const previous = chapterIndex >= 0 ? chapters[chapterIndex - 1] : undefined;
   const next = chapterIndex >= 0 ? chapters[chapterIndex + 1] : undefined;
   const publicNumber = chapterIndex >= 0 ? chapterIndex + 1 : chapter.number;
-  const preview = searchParams.get("preview") === "1" && rootData?.user?.role === "admin";
+  const preview = searchParams.get("preview") === "1" && canManage;
 
   return (
     <main className="reader">
-      <Header profileEditorTo={`/admin/chapters/${chapter.slug}`} beforeAction={preview ? (
-        <Link className="preview-toggle preview-toggle--mobile" to={`/admin/chapters/${chapter.slug}`} aria-label={text("Вернуться в редактор", "Повернутися до редактора")} title={text("Вернуться в редактор", "Повернутися до редактора")}>
+      <Header profileEditorTo={`/editor/works/${book.id}/chapters/${chapter.slug}`} beforeAction={preview ? (
+        <Link className="preview-toggle preview-toggle--mobile" to={`/editor/works/${book.id}/chapters/${chapter.slug}`} aria-label={text("Вернуться в редактор", "Повернутися до редактора")} title={text("Вернуться в редактор", "Повернутися до редактора")}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6M9 12h10" /></svg>
         </Link>
       ) : undefined} action={(
         <div className="reader-header-actions">
-          <ChapterSelect current={chapter} chapters={chapters} preview={preview} />
+          <ChapterSelect current={chapter} chapters={chapters} preview={preview} workSlug={book.slug} />
         </div>
       )} />
 
@@ -85,7 +93,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
           <span className="reader__number">{publicNumber}</span>
           <p className="eyebrow">{text("Глава", "Глава")} {publicNumber}</p>
           <h1>{chapter.title}</h1>
-          <ChapterPagination previous={previous} next={next} position="intro" preview={preview} />
+          <ChapterPagination previous={previous} next={next} position="intro" preview={preview} workSlug={book.slug} />
           {chapter.subtitle ? (
             <p className="reader__subtitle">{chapter.subtitle}</p>
           ) : (
@@ -97,7 +105,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
         </div>
       </article>
 
-      <ChapterPagination previous={previous} next={next} position="footer" preview={preview} />
+      <ChapterPagination previous={previous} next={next} position="footer" preview={preview} workSlug={book.slug} />
       <section className="comments-section">
         <div className="section-heading">
           <p className="eyebrow">{text("Обсуждение", "Обговорення")}</p>
@@ -141,7 +149,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
                       hour12: false,
                       timeZone: "Europe/Kyiv",
                     })}</time>
-                    {rootData?.user?.role === "admin" && (
+                    {canManage && (
                       <button className="comment__delete" type="button" onClick={() => setCommentToDelete(comment.id)} aria-label={text("Удалить комментарий", "Видалити коментар")} title={text("Удалить комментарий", "Видалити коментар")}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
                       </button>
@@ -187,7 +195,7 @@ type SelectChapter = PaginationChapter & {
   number: string;
 };
 
-function ChapterSelect({ current, chapters, preview }: { current: SelectChapter; chapters: SelectChapter[]; preview: boolean }) {
+function ChapterSelect({ current, chapters, preview, workSlug }: { current: SelectChapter; chapters: SelectChapter[]; preview: boolean; workSlug: string }) {
   const { text } = useLocalization();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -243,7 +251,7 @@ function ChapterSelect({ current, chapters, preview }: { current: SelectChapter;
             {chapters.map((item) => (
               <Link
                 className={item.id === current.id ? "chapter-select__option chapter-select__option--active" : "chapter-select__option"}
-                to={`/chapters/${item.publicSlug}${preview ? "?preview=1" : ""}`}
+                to={`/works/${workSlug}/chapters/${item.publicSlug}${preview ? "?preview=1" : ""}`}
                 aria-current={item.id === current.id ? "page" : undefined}
                 key={item.id}
                 onClick={() => setOpen(false)}
@@ -264,11 +272,13 @@ function ChapterPagination({
   next,
   position,
   preview,
+  workSlug,
 }: {
   previous?: PaginationChapter;
   next?: PaginationChapter;
   position: "intro" | "footer";
   preview: boolean;
+  workSlug: string;
 }) {
   const { text } = useLocalization();
   return (
@@ -277,24 +287,24 @@ function ChapterPagination({
       aria-label={position === "intro" ? text("Навигация по главам перед текстом", "Навігація главами перед текстом") : text("Навигация по главам после текста", "Навігація главами після тексту")}
     >
       {previous ? (
-        <Link to={`/chapters/${previous.publicSlug}${preview ? "?preview=1" : ""}`}>
+        <Link to={`/works/${workSlug}/chapters/${previous.publicSlug}${preview ? "?preview=1" : ""}`}>
           <small>{text("Предыдущая глава", "Попередня глава")}</small>
           <span>← {previous.title}</span>
         </Link>
       ) : <span />}
       {position === "footer" && (
-        <Link to="/#chapters" className="reader__all-chapters">
+        <Link to={`/works/${workSlug}#chapters`} className="reader__all-chapters">
           <small>{text("Содержание", "Зміст")}</small>
           <span>{text("Все главы", "Усі глави")}</span>
         </Link>
       )}
       {next ? (
-        <Link to={`/chapters/${next.publicSlug}${preview ? "?preview=1" : ""}`} className="reader__next">
+        <Link to={`/works/${workSlug}/chapters/${next.publicSlug}${preview ? "?preview=1" : ""}`} className="reader__next">
           <small>{text("Следующая глава", "Наступна глава")}</small>
           <span>{next.title} →</span>
         </Link>
       ) : (
-        <Link to="/#chapters" className="reader__next">
+        <Link to={`/works/${workSlug}#chapters`} className="reader__next">
           <small>{text("Конец", "Кінець")}</small>
           <span>{text("К списку глав", "До списку глав")} →</span>
         </Link>

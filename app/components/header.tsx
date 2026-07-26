@@ -1,4 +1,4 @@
-import { Form, Link, useRouteLoaderData } from "react-router";
+import { Form, Link, useFetcher, useRevalidator, useRouteLoaderData } from "react-router";
 import { useEffect, useState } from "react";
 import { useLocalization } from "../localization";
 
@@ -9,13 +9,26 @@ type HeaderProps = {
   profileEditorTo?: string;
 };
 
-export function Header({ variant = "solid", action, beforeAction, profileEditorTo = "/admin/chapters" }: HeaderProps) {
+export function Header({ variant = "solid", action, beforeAction, profileEditorTo = "/editor" }: HeaderProps) {
   const { text } = useLocalization();
   const rootData = useRouteLoaderData<{
-    user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null;
+    user: { username: string; avatarUrl: string | null; role: "admin" | "reader"; accountPlus: number } | null;
     book: { title: string; description: string };
+    unreadNotifications: number;
+    notifications: NotificationItem[];
   }>("root");
   const user = rootData?.user;
+  const revalidator = useRevalidator();
+
+  useEffect(() => {
+    if (!user) return;
+    const events = new EventSource("/events");
+    events.onmessage = (event) => {
+      const payload = JSON.parse(event.data) as { type?: string };
+      if (payload.type === "notification" || payload.type === "message") revalidator.revalidate();
+    };
+    return () => events.close();
+  }, [user?.username]);
 
   return (
     <header className={`site-header site-header--${variant}`}>
@@ -24,13 +37,71 @@ export function Header({ variant = "solid", action, beforeAction, profileEditorT
         <span>{rootData?.book.title ?? "Phantom Freedom"}</span>
       </Link>
       <div className={`site-header__action ${user ? "site-header__action--authenticated" : ""}`}>
+        <Link className="header-works-link" to="/works">{text("Работы", "Роботи")}</Link>
         <ThemeToggle className="theme-toggle--desktop" />
         <LanguageToggle className="language-toggle--desktop" />
         {beforeAction}
         {action}
+        {user && <NotificationMenu notifications={rootData?.notifications ?? []} unread={rootData?.unreadNotifications ?? 0} />}
         <ProfileMenu user={user} editorTo={profileEditorTo} />
       </div>
     </header>
+  );
+}
+
+type NotificationItem = {
+  type: "chapter" | "message";
+  id: number;
+  readAt: string | null;
+  workSlug: string | null;
+  workTitle: string | null;
+  chapterSlug: string | null;
+  chapterTitle: string | null;
+  senderUsername: string | null;
+  messagePreview: string | null;
+};
+
+function NotificationMenu({
+  notifications,
+  unread,
+}: {
+  notifications: NotificationItem[];
+  unread: number;
+}) {
+  const { text } = useLocalization();
+  const [open, setOpen] = useState(false);
+  const fetcher = useFetcher();
+
+  function toggle() {
+    const willOpen = !open;
+    setOpen(willOpen);
+    if (willOpen && unread > 0) fetcher.submit({}, { method: "post", action: "/notifications" });
+  }
+
+  return (
+    <div className={`notification-menu ${open ? "notification-menu--open" : ""}`}>
+      <button className="notification-menu__trigger" type="button" onClick={toggle} aria-expanded={open} aria-label={text("Уведомления", "Сповіщення")}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+        {unread > 0 && <b>{unread > 99 ? "99+" : unread}</b>}
+      </button>
+      {open && <button className="notification-menu__backdrop" type="button" aria-label={text("Закрыть уведомления", "Закрити сповіщення")} onClick={() => setOpen(false)} />}
+      {open && (
+        <div className="notification-menu__panel">
+          <strong>{text("Уведомления", "Сповіщення")}</strong>
+          {notifications.length === 0 ? <p>{text("Новых уведомлений пока нет.", "Нових сповіщень поки немає.")}</p> : notifications.map((notification) => notification.type === "message" ? (
+            <Link to={`/messages/${notification.senderUsername}`} key={`message-${notification.id}`} onClick={() => setOpen(false)}>
+              <small>{notification.senderUsername}</small>
+              <span>{text("Новое сообщение", "Нове повідомлення")}: {notification.messagePreview}</span>
+            </Link>
+          ) : (
+            <Link to={`/works/${notification.workSlug}/chapters/${notification.chapterSlug}`} key={`chapter-${notification.id}`} onClick={() => setOpen(false)}>
+              <small>{notification.workTitle}</small>
+              <span>{text("Новая глава", "Нова глава")}: {notification.chapterTitle}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -38,7 +109,7 @@ function ProfileMenu({
   user,
   editorTo,
 }: {
-  user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null | undefined;
+  user: { username: string; avatarUrl: string | null; role: "admin" | "reader"; accountPlus: number } | null | undefined;
   editorTo: string;
 }) {
   const { text } = useLocalization();
@@ -86,6 +157,10 @@ function ProfileMenu({
           <button type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)}>×</button>
         </div>
         <nav>
+          <Link to="/works" onClick={() => setOpen(false)}>
+            <span>{text("Работы", "Роботи")}</span>
+            <b aria-hidden="true">→</b>
+          </Link>
           <div className="profile-menu__theme">
             <span>{text("Тёмная тема", "Темна тема")}</span>
             <ThemeToggle className="theme-toggle--mobile" showLabel />
@@ -94,15 +169,15 @@ function ProfileMenu({
             <span>{text("Язык", "Мова")}</span>
             <LanguageToggle />
           </div>
-          {user?.role === "admin" && (
-            <Link to={editorTo} onClick={() => setOpen(false)}>
-              <span>{text("Редактор", "Редактор")}</span>
+          {user && (
+            <Link to="/profile" onClick={() => setOpen(false)}>
+              <span>{text("Профиль", "Профіль")}</span>
               <b aria-hidden="true">→</b>
             </Link>
           )}
-          {user && (
-            <Link to="/profile" onClick={() => setOpen(false)}>
-              <span>{text("Настройки профиля", "Налаштування профілю")}</span>
+          {(user?.role === "admin" || user?.accountPlus === 1) && (
+            <Link to={editorTo} onClick={() => setOpen(false)}>
+              <span>{text("Редактор", "Редактор")}</span>
               <b aria-hidden="true">→</b>
             </Link>
           )}

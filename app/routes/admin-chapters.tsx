@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Form, Link, redirect, useFetcher } from "react-router";
 import type { Route } from "./+types/admin-chapters";
-import { requireAdmin } from "../auth.server";
+import { requireWorkManager } from "../auth.server";
 import {
   createChapter,
   getAllChapters,
-  getBookSettings,
+  getWorkById,
   reorderChapters,
-  saveBookSettings,
+  saveWork,
+  setWorkPublished,
 } from "../database.server";
 import { Header } from "../components/header";
 import { countPages, countTotalPages, formatChapters, formatPages } from "../text-metrics";
@@ -17,26 +18,36 @@ export function meta() {
   return [{ title: "Редактор — Phantom Freedom" }];
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-  await requireAdmin(request);
-  const chapters = getAllChapters();
+export async function loader({ request, params }: Route.LoaderArgs) {
+  const workId = Number(params.workId);
+  await requireWorkManager(request, workId);
+  const book = getWorkById(workId);
+  if (!book) throw new Response("Работа не найдена", { status: 404 });
+  const chapters = getAllChapters(workId);
   return {
-    book: getBookSettings(),
+    book,
     chapters: chapters.map((chapter) => ({ ...chapter, pages: countPages(chapter.content) })),
     totalPages: countTotalPages(chapters.map((chapter) => chapter.content)),
   };
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  await requireAdmin(request);
+export async function action({ request, params }: Route.ActionArgs) {
+  const workId = Number(params.workId);
+  await requireWorkManager(request, workId);
   const form = await request.formData();
   const intent = String(form.get("intent") ?? "");
+
+  if (intent === "toggle-work-publication") {
+    setWorkPublished(workId, form.get("published") === "yes");
+    return { ok: true };
+  }
 
   if (intent === "save-book") {
     const title = String(form.get("title") ?? "").trim();
     const description = String(form.get("description") ?? "").trim();
     if (!title) return { ok: false, error: "Название не может быть пустым." };
-    const current = getBookSettings();
+    const current = getWorkById(workId);
+    if (!current) throw new Response("Работа не найдена", { status: 404 });
     const requestedX = Number(form.get("coverPositionX"));
     const requestedY = Number(form.get("coverPositionY"));
     const requestedZoom = Number(form.get("coverZoom"));
@@ -54,23 +65,24 @@ export async function action({ request }: Route.ActionArgs) {
       }
       coverUrl = `data:${cover.type};base64,${Buffer.from(await cover.arrayBuffer()).toString("base64")}`;
     }
-    saveBookSettings({ title, description, notes: current.notes, coverUrl, coverPositionX, coverPositionY, coverZoom });
+    saveWork(workId, { title, description, notes: current.notes, coverUrl, coverPositionX, coverPositionY, coverZoom });
     return { ok: true };
   }
 
   if (intent === "save-notes") {
-    const current = getBookSettings();
-    saveBookSettings({ ...current, notes: String(form.get("notes") ?? "").trim() });
+    const current = getWorkById(workId);
+    if (!current) throw new Response("Работа не найдена", { status: 404 });
+    saveWork(workId, { ...current, notes: String(form.get("notes") ?? "").trim() });
     return { ok: true };
   }
 
   if (intent === "create-chapter") {
-    return redirect(`/admin/chapters/${createChapter()}`);
+    return redirect(`/editor/works/${workId}/chapters/${createChapter(workId)}`);
   }
 
   if (intent === "reorder") {
     const order = JSON.parse(String(form.get("order") ?? "[]")) as number[];
-    reorderChapters(order);
+    reorderChapters(workId, order);
     return { ok: true };
   }
 
@@ -138,6 +150,18 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
         </div>
 
         <div className="admin-section">
+          <Form method="post" className={`publication-zone ${loaderData.book.published === 1 ? "publication-zone--published" : ""}`}>
+            <input type="hidden" name="intent" value="toggle-work-publication" />
+            <input type="hidden" name="published" value={loaderData.book.published === 1 ? "no" : "yes"} />
+            <div>
+              <strong>{loaderData.book.published === 1 ? text("Работа опубликована", "Роботу опубліковано") : text("Работа скрыта", "Роботу приховано")}</strong>
+              <small>{text("Скрытая работа и её главы доступны только владельцу и администратору.", "Прихована робота та її глави доступні лише власнику й адміністратору.")}</small>
+            </div>
+            <button type="submit">{loaderData.book.published === 1 ? text("Скрыть работу", "Приховати роботу") : text("Опубликовать работу", "Опублікувати роботу")}</button>
+          </Form>
+        </div>
+
+        <div className="admin-section">
           <p className="eyebrow">{text("Управление содержанием", "Керування вмістом")}</p>
           <h1>{text("Главы", "Глави")}</h1>
           <div className="admin-summary">
@@ -174,12 +198,12 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
                   <span>⠿</span>
                 </button>
                 <span>{chapter.number}</span>
-                <Link to={`/admin/chapters/${chapter.slug}`}>{chapter.title}</Link>
+                <Link to={`/editor/works/${loaderData.book.id}/chapters/${chapter.slug}`}>{chapter.title}</Link>
                 <strong className={`publication-badge ${chapter.published === 1 ? "publication-badge--yes" : ""}`}>
                   {text("Опубликована", "Опублікована")}: {chapter.published === 1 ? text("Да", "Так") : text("Нет", "Ні")}
                 </strong>
                 <em>{formatPages(chapter.pages, language)}</em>
-                <Link className="admin-list__edit" to={`/admin/chapters/${chapter.slug}`}>{text("Редактировать", "Редагувати")} →</Link>
+                <Link className="admin-list__edit" to={`/editor/works/${loaderData.book.id}/chapters/${chapter.slug}`}>{text("Редактировать", "Редагувати")} →</Link>
               </div>
             ))}
           </div>

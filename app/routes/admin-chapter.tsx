@@ -1,38 +1,50 @@
 import { data, Form, Link, redirect, useNavigate } from "react-router";
 import type { Route } from "./+types/admin-chapter";
-import { requireAdmin } from "../auth.server";
-import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter, setChapterPublished } from "../database.server";
+import { requireWorkManager } from "../auth.server";
+import { createChapterNotifications, deleteChapter, getAllChapters, getChapterForEditing, getWorkById, saveChapter, setChapterPublished } from "../database.server";
 import { Header } from "../components/header";
 import { useState } from "react";
 import { countPages, countTotalPages, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
 import { sendNewChapterNotification } from "../mail.server";
+import { publishUserEvent } from "../realtime.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  await requireAdmin(request);
-  const chapter = getChapterForEditing(params.chapterId);
+  const workId = Number(params.workId);
+  await requireWorkManager(request, workId);
+  const chapter = getChapterForEditing(workId, params.chapterId);
   if (!chapter) throw new Response("Глава не найдена", { status: 404 });
-  const otherChapterTexts = getAllChapters()
+  const otherChapterTexts = getAllChapters(workId)
     .filter((item) => item.id !== chapter.id)
     .map((item) => item.content);
-  return { chapter, otherChapterTexts };
+  return { chapter, otherChapterTexts, workId, work: getWorkById(workId)! };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
-  await requireAdmin(request);
-  const current = getChapterForEditing(params.chapterId);
+  const workId = Number(params.workId);
+  await requireWorkManager(request, workId);
+  const current = getChapterForEditing(workId, params.chapterId);
   if (!current) throw new Response("Глава не найдена", { status: 404 });
 
   const form = await request.formData();
   if (form.get("intent") === "delete") {
-    deleteChapter(current.id);
-    return redirect("/admin/chapters");
+    deleteChapter(workId, current.id);
+    return redirect(`/editor/works/${workId}`);
   }
   if (form.get("intent") === "toggle-publication") {
     const willPublish = current.published !== 1;
+    const work = getWorkById(workId);
+    if (!work) throw new Response("Работа не найдена", { status: 404 });
+    if (willPublish && work.published !== 1) {
+      return data({ error: "Сначала опубликуйте работу." }, { status: 400 });
+    }
     setChapterPublished(current.id, willPublish);
-    if (willPublish) await sendNewChapterNotification(current);
-    return redirect(`/admin/chapters/${current.slug}`);
+    if (willPublish) {
+      const followers = createChapterNotifications(workId, current.id);
+      followers.forEach(({ userId }) => publishUserEvent(userId, { type: "notification" }));
+      await sendNewChapterNotification(current, work, followers.flatMap(({ email }) => email ? [email] : []));
+    }
+    return redirect(`/editor/works/${workId}/chapters/${current.slug}`);
   }
 
   const chapter = {
@@ -51,12 +63,12 @@ export async function action({ request, params }: Route.ActionArgs) {
   } catch {
     return data({ error: "Не удалось сохранить. Проверьте уникальность адреса главы." }, { status: 400 });
   }
-  return redirect("/admin/chapters");
+  return redirect(`/editor/works/${workId}`);
 }
 
 export default function AdminChapter({ loaderData, actionData }: Route.ComponentProps) {
   const { language, text } = useLocalization();
-  const { chapter, otherChapterTexts } = loaderData;
+  const { chapter, otherChapterTexts, workId, work } = loaderData;
   const navigate = useNavigate();
   const [content, setContent] = useState(chapter.content);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -67,15 +79,15 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
     <main className="admin-page">
       <Header beforeAction={(
         <>
-          <Link className="header-button preview-link--desktop" to={`/chapters/${chapter.publicSlug}?preview=1`}>{text("Читать", "Читати")}</Link>
-          <Link className="preview-toggle preview-toggle--mobile" to={`/chapters/${chapter.publicSlug}?preview=1`} aria-label={text("Открыть предпросмотр", "Відкрити попередній перегляд")} title={text("Предпросмотр", "Попередній перегляд")}>
+          <Link className="header-button preview-link--desktop" to={`/works/${work.slug}/chapters/${chapter.publicSlug}?preview=1`}>{text("Читать", "Читати")}</Link>
+          <Link className="preview-toggle preview-toggle--mobile" to={`/works/${work.slug}/chapters/${chapter.publicSlug}?preview=1`} aria-label={text("Открыть предпросмотр", "Відкрити попередній перегляд")} title={text("Предпросмотр", "Попередній перегляд")}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="3" /></svg>
           </Link>
         </>
       )} />
       <section className="admin-shell admin-shell--editor">
         <div className="editor-heading-row">
-          <Link className="eyebrow editor-home-link" to="/admin/chapters">{text("Редактор", "Редактор")}</Link>
+          <Link className="eyebrow editor-home-link" to={`/editor/works/${workId}`}>{text("Редактор работы", "Редактор роботи")}</Link>
           <button className="editor-back-button" type="button" onClick={() => navigate(-1)}>
             <span aria-hidden="true">←</span>
             {text("Вернуться", "Повернутися")}
@@ -94,12 +106,19 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")} {text("символов", "символів")} · {text("1800 символов на страницу", "1800 символів на сторінку")}</small>
         </div>
         <Form method="post" className="editor-form">
-          <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · {text("публичный адрес", "публічна адреса")} /chapters/{chapter.publicSlug}</div>
+          <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · /works/{work.slug}/chapters/{chapter.publicSlug}</div>
           <label>{text("Название", "Назва")}<input name="title" defaultValue={chapter.title} required /></label>
           <label>{text("Краткое описание", "Короткий опис")}<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
           <label>{text("Текст главы", "Текст глави")}<textarea className="editor-form__content" name="content" rows={28} value={content} onChange={(event) => setContent(event.currentTarget.value)} /></label>
           <p className="editor-hint">{text("Разделяйте абзацы одной пустой строкой. Одна условная страница равна 1800 знакам с пробелами.", "Розділяйте абзаци одним порожнім рядком. Одна умовна сторінка дорівнює 1800 знакам із пробілами.")}</p>
-          {actionData?.error && <p className="form-error">{text(actionData.error, actionData.error === "Название обязательно." ? "Назва обов’язкова." : "Не вдалося зберегти. Перевірте унікальність адреси глави.")}</p>}
+          {actionData?.error && <p className="form-error">{text(
+            actionData.error,
+            actionData.error === "Название обязательно."
+              ? "Назва обов’язкова."
+              : actionData.error === "Сначала опубликуйте работу."
+                ? "Спочатку опублікуйте роботу."
+                : "Не вдалося зберегти. Перевірте унікальність адреси глави.",
+          )}</p>}
           <button type="submit">{text("Сохранить изменения", "Зберегти зміни")}</button>
         </Form>
         <div className="chapter-controls">
@@ -108,9 +127,10 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
               <b>{text("Публикация главы", "Публікація глави")}</b>
               <p>{chapter.published === 1 ? text("Глава опубликована", "Главу опубліковано") : text("Глава скрыта", "Главу приховано")}</p>
             </div>
-            <button type="button" onClick={() => setPublicationDialogOpen(true)}>
+            <button type="button" disabled={chapter.published !== 1 && work.published !== 1} onClick={() => setPublicationDialogOpen(true)}>
               {chapter.published === 1 ? text("Скрыть", "Приховати") : text("Опубликовать", "Опублікувати")}
             </button>
+            {chapter.published !== 1 && work.published !== 1 && <small>{text("Сначала опубликуйте работу.", "Спочатку опублікуйте роботу.")}</small>}
           </div>
           <div className="danger-zone">
             <div>

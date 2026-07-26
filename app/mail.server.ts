@@ -1,5 +1,4 @@
-import type { ChapterRecord } from "./database.server";
-import { getBookSettings, getNotificationRecipients } from "./database.server";
+import type { ChapterRecord, WorkRecord } from "./database.server";
 
 async function sendMail(to: string | string[], subject: string, html: string, bcc?: string[]) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -38,17 +37,15 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   );
 }
 
-export async function sendNewChapterNotification(chapter: ChapterRecord) {
-  const recipients = getNotificationRecipients().map(({ email }) => email);
+export async function sendNewChapterNotification(chapter: ChapterRecord, book: WorkRecord, recipients: string[]) {
   if (recipients.length === 0) return;
   const sender = process.env.MAIL_FROM ?? "notifications@invalid.local";
-  const book = getBookSettings();
   const baseUrl = (process.env.APP_URL ?? "http://localhost:5173").replace(/\/$/, "");
   for (let index = 0; index < recipients.length; index += 50) {
     await sendMail(
       sender,
       `Новая глава «${chapter.title}» — ${book.title}`,
-      `<p>Опубликована новая глава: <strong>${escapeHtml(chapter.title)}</strong>.</p><p><a href="${baseUrl}/chapters/${encodeURIComponent(chapter.publicSlug)}">Читать главу</a></p>`,
+      `<p>Опубликована новая глава: <strong>${escapeHtml(chapter.title)}</strong>.</p><p><a href="${baseUrl}/works/${encodeURIComponent(book.slug)}/chapters/${encodeURIComponent(chapter.publicSlug)}">Читать главу</a></p>`,
       recipients.slice(index, index + 50),
     );
   }

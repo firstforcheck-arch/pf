@@ -9,6 +9,16 @@ export type PublicUser = {
   email: string | null;
   avatarUrl: string | null;
   role: "admin" | "reader";
+  accountPlus: number;
+  lastSeen: string;
+};
+export type WorkRecord = BookSettings & {
+  id: number;
+  slug: string;
+  ownerId: number;
+  owner: Pick<PublicUser, "id" | "username" | "avatarUrl">;
+  published: number;
+  createdAt: string;
 };
 export type CommentRecord = {
   id: number;
@@ -42,7 +52,7 @@ const dataDirectory = join(process.cwd(), "data");
 mkdirSync(dataDirectory, { recursive: true });
 
 const database = new DatabaseSync(join(dataDirectory, "phantom-freedom.sqlite"));
-database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+database.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
 database.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,6 +146,17 @@ try {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
 try {
+  database.exec("ALTER TABLE users ADD COLUMN account_plus INTEGER NOT NULL DEFAULT 0");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
+  database.exec("ALTER TABLE users ADD COLUMN last_seen TEXT NOT NULL DEFAULT ''");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+database.exec("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE last_seen = ''");
+try {
   database.exec("ALTER TABLE chapters ADD COLUMN public_slug TEXT");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
@@ -165,6 +186,45 @@ try {
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
+const firstUser = database.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get() as { id: number } | undefined;
+if (firstUser) {
+  database.prepare("UPDATE users SET username = username || '_legacy' WHERE username = 'Phantom_Fighter' AND id <> ?").run(firstUser.id);
+  database.prepare("UPDATE users SET username = 'Phantom_Fighter', role = 'admin', account_plus = 1 WHERE id = ?").run(firstUser.id);
+}
+database.exec(`
+  CREATE TABLE IF NOT EXISTS works (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    cover_url TEXT,
+    cover_position_x REAL NOT NULL DEFAULT 50,
+    cover_position_y REAL NOT NULL DEFAULT 50,
+    cover_zoom REAL NOT NULL DEFAULT 1,
+    published INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+if (firstUser) {
+  database.prepare(`
+    INSERT OR IGNORE INTO works (
+      id, slug, owner_id, title, description, notes, cover_url,
+      cover_position_x, cover_position_y, cover_zoom, published
+    )
+    SELECT 1, 'phantom-freedom', ?, title, description, notes, cover_url,
+      cover_position_x, cover_position_y, cover_zoom, 1
+    FROM book_settings WHERE id = 1
+  `).run(firstUser.id);
+}
+try {
+  database.exec("ALTER TABLE chapters ADD COLUMN work_id INTEGER REFERENCES works(id) ON DELETE CASCADE");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+database.exec("UPDATE chapters SET work_id = 1 WHERE work_id IS NULL AND EXISTS (SELECT 1 FROM works WHERE id = 1)");
 database.exec("UPDATE chapters SET sort_order = id WHERE sort_order = 0");
 
 const chapterCount = database.prepare("SELECT COUNT(*) AS count FROM chapters").get() as { count: number };
@@ -181,6 +241,54 @@ const chaptersWithoutPublicSlug = database.prepare("SELECT id FROM chapters WHER
 const setPublicSlug = database.prepare("UPDATE chapters SET public_slug = ? WHERE id = ?");
 chaptersWithoutPublicSlug.forEach(({ id }) => setPublicSlug.run(randomUUID(), id));
 database.exec("CREATE UNIQUE INDEX IF NOT EXISTS chapters_public_slug_idx ON chapters(public_slug)");
+database.exec(`
+  CREATE TABLE IF NOT EXISTS work_followers (
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_id, user_id)
+  );
+  CREATE TABLE IF NOT EXISTS notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, chapter_id)
+  );
+  CREATE INDEX IF NOT EXISTS notifications_user_created_idx
+    ON notifications(user_id, created_at DESC);
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS messages_dialog_idx
+    ON messages(sender_id, recipient_id, created_at, id);
+  CREATE TABLE IF NOT EXISTS message_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS message_notifications_user_created_idx
+    ON message_notifications(user_id, created_at DESC);
+`);
+for (const statement of [
+  "ALTER TABLE messages ADD COLUMN image_url TEXT",
+  "ALTER TABLE messages ADD COLUMN reply_to_id INTEGER REFERENCES messages(id) ON DELETE SET NULL",
+  "ALTER TABLE messages ADD COLUMN edited_at TEXT",
+]) {
+  try {
+    database.exec(statement);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+  }
+}
 normalizeChapterOrder();
 
 export function countUsers() {
@@ -196,20 +304,35 @@ export function createUser(username: string, passwordHash: string, role: PublicU
 
 export function findUserByUsername(username: string) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role FROM users WHERE username = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE username = ?")
     .get(username) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserByEmail(email: string) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role FROM users WHERE email = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE email = ?")
     .get(email) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserById(id: number) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, role FROM users WHERE id = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE id = ?")
     .get(id) as PublicUser | undefined;
+}
+
+export function touchUser(id: number) {
+  database.prepare("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+}
+
+export function setUserAccountPlus(id: number, enabled: boolean) {
+  database.prepare("UPDATE users SET account_plus = ? WHERE id = ? AND role <> 'admin'").run(enabled ? 1 : 0, id);
+}
+
+export function getPublicUserByUsername(username: string) {
+  return database.prepare(`
+    SELECT id, username, avatar_url AS avatarUrl, role, account_plus AS accountPlus, last_seen AS lastSeen
+    FROM users WHERE username = ?
+  `).get(username) as Omit<PublicUser, "email"> | undefined;
 }
 
 export function updateUserProfile(id: number, username: string, email: string | null, avatarUrl: string | null) {
@@ -246,9 +369,140 @@ export function deleteComment(commentId: number, chapterId: number) {
   database.prepare("DELETE FROM comments WHERE id = ? AND chapter_id = ?").run(commentId, chapterId);
 }
 
-export function getNotificationRecipients() {
-  return database.prepare("SELECT email FROM users WHERE email IS NOT NULL AND email <> ''")
-    .all() as { email: string }[];
+export function isFollowingWork(userId: number, workId: number) {
+  return Boolean(database.prepare("SELECT 1 FROM work_followers WHERE user_id = ? AND work_id = ?").get(userId, workId));
+}
+
+export function setWorkFollowing(userId: number, workId: number, following: boolean) {
+  if (following) {
+    database.prepare("INSERT OR IGNORE INTO work_followers (work_id, user_id) VALUES (?, ?)").run(workId, userId);
+  } else {
+    database.prepare("DELETE FROM work_followers WHERE work_id = ? AND user_id = ?").run(workId, userId);
+  }
+}
+
+export function createChapterNotifications(workId: number, chapterId: number) {
+  database.prepare(`
+    INSERT OR IGNORE INTO notifications (user_id, work_id, chapter_id)
+    SELECT user_id, work_id, ? FROM work_followers WHERE work_id = ?
+  `).run(chapterId, workId);
+  return database.prepare(`
+    SELECT users.id AS userId, users.email
+    FROM work_followers
+    JOIN users ON users.id = work_followers.user_id
+    WHERE work_followers.work_id = ?
+  `).all(workId) as { userId: number; email: string | null }[];
+}
+
+export function getUserNotifications(userId: number, limit = 8) {
+  return database.prepare(`
+    SELECT 'chapter' AS type, notifications.id, notifications.read_at AS readAt, notifications.created_at AS createdAt,
+      works.slug AS workSlug, works.title AS workTitle,
+      chapters.public_slug AS chapterSlug, chapters.title AS chapterTitle,
+      NULL AS senderUsername, NULL AS messagePreview
+    FROM notifications
+    JOIN works ON works.id = notifications.work_id
+    JOIN chapters ON chapters.id = notifications.chapter_id
+    WHERE notifications.user_id = ?
+    UNION ALL
+    SELECT 'message' AS type, message_notifications.id, message_notifications.read_at AS readAt,
+      message_notifications.created_at AS createdAt, NULL, NULL, NULL, NULL,
+      users.username AS senderUsername,
+      COALESCE(NULLIF(substr(messages.content, 1, 100), ''), 'Изображение') AS messagePreview
+    FROM message_notifications
+    JOIN messages ON messages.id = message_notifications.message_id
+    JOIN users ON users.id = messages.sender_id
+    WHERE message_notifications.user_id = ?
+    ORDER BY 4 DESC, 2 DESC
+    LIMIT ?
+  `).all(userId, userId, limit) as Array<{
+    type: "chapter" | "message";
+    id: number;
+    readAt: string | null;
+    createdAt: string;
+    workSlug: string | null;
+    workTitle: string | null;
+    chapterSlug: string | null;
+    chapterTitle: string | null;
+    senderUsername: string | null;
+    messagePreview: string | null;
+  }>;
+}
+
+export function getUnreadNotificationCount(userId: number) {
+  const chapterCount = (database.prepare("SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL").get(userId) as { count: number }).count;
+  const messageCount = (database.prepare("SELECT COUNT(*) AS count FROM message_notifications WHERE user_id = ? AND read_at IS NULL").get(userId) as { count: number }).count;
+  return chapterCount + messageCount;
+}
+
+export function markNotificationsRead(userId: number) {
+  database.prepare("UPDATE notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND read_at IS NULL").run(userId);
+  database.prepare("UPDATE message_notifications SET read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND read_at IS NULL").run(userId);
+}
+
+export function getDialogMessages(userId: number, peerId: number) {
+  return database.prepare(`
+    SELECT current_message.id, current_message.sender_id AS senderId, current_message.recipient_id AS recipientId,
+      current_message.content, current_message.image_url AS imageUrl, current_message.reply_to_id AS replyToId,
+      current_message.edited_at AS editedAt, current_message.created_at AS createdAt,
+      replied.content AS replyContent, replied.image_url AS replyImageUrl,
+      replied_users.username AS replyUsername
+    FROM messages AS current_message
+    LEFT JOIN messages AS replied ON replied.id = current_message.reply_to_id
+    LEFT JOIN users AS replied_users ON replied_users.id = replied.sender_id
+    WHERE (current_message.sender_id = ? AND current_message.recipient_id = ?)
+      OR (current_message.sender_id = ? AND current_message.recipient_id = ?)
+    ORDER BY current_message.created_at, current_message.id
+    LIMIT 500
+  `).all(userId, peerId, peerId, userId) as Array<{
+    id: number;
+    senderId: number;
+    recipientId: number;
+    content: string;
+    imageUrl: string | null;
+    replyToId: number | null;
+    editedAt: string | null;
+    createdAt: string;
+    replyContent: string | null;
+    replyImageUrl: string | null;
+    replyUsername: string | null;
+  }>;
+}
+
+export function createMessage(senderId: number, recipientId: number, content: string, imageUrl: string | null, replyToId: number | null, notifyRecipient = true) {
+  if (replyToId) {
+    const reply = database.prepare(`
+      SELECT 1 FROM messages WHERE id = ? AND
+        ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+    `).get(replyToId, senderId, recipientId, recipientId, senderId);
+    if (!reply) replyToId = null;
+  }
+  const result = database.prepare("INSERT INTO messages (sender_id, recipient_id, content, image_url, reply_to_id) VALUES (?, ?, ?, ?, ?)")
+    .run(senderId, recipientId, content, imageUrl, replyToId);
+  const messageId = Number(result.lastInsertRowid);
+  if (notifyRecipient) {
+    database.prepare("INSERT INTO message_notifications (user_id, message_id) VALUES (?, ?)").run(recipientId, messageId);
+  }
+  return messageId;
+}
+
+export function markDialogNotificationsRead(userId: number, peerId: number) {
+  database.prepare(`
+    UPDATE message_notifications SET read_at = CURRENT_TIMESTAMP
+    WHERE user_id = ? AND read_at IS NULL AND message_id IN (
+      SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ?
+    )
+  `).run(userId, peerId, userId);
+}
+
+export function editMessage(messageId: number, senderId: number, content: string) {
+  return database.prepare("UPDATE messages SET content = ?, edited_at = CURRENT_TIMESTAMP WHERE id = ? AND sender_id = ?")
+    .run(content, messageId, senderId).changes > 0;
+}
+
+export function deleteMessage(messageId: number, senderId: number) {
+  return database.prepare("DELETE FROM messages WHERE id = ? AND sender_id = ?")
+    .run(messageId, senderId).changes > 0;
 }
 
 export function createPasswordResetToken(userId: number, tokenHash: string, expiresAt: string) {
@@ -267,47 +521,127 @@ export function consumePasswordResetToken(tokenHash: string) {
   return token.userId;
 }
 
-export function getPublishedChapters() {
-  return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE published = 1 ORDER BY sort_order, id
-  `).all() as unknown as ChapterRecord[];
+const workSelect = `
+  SELECT works.id, works.slug, works.owner_id AS ownerId, works.title, works.description, works.notes,
+    works.cover_url AS coverUrl, works.cover_position_x AS coverPositionX,
+    works.cover_position_y AS coverPositionY, works.cover_zoom AS coverZoom,
+    works.published, works.created_at AS createdAt,
+    users.id AS userId, users.username, users.avatar_url AS avatarUrl
+  FROM works JOIN users ON users.id = works.owner_id
+`;
+
+function mapWork(row: any) {
+  const { userId, username, avatarUrl, ...work } = row;
+  return { ...work, owner: { id: userId, username, avatarUrl } } as WorkRecord;
 }
 
-export function getAllChapters() {
-  return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters ORDER BY sort_order, id
-  `).all() as unknown as ChapterRecord[];
+export function getPublishedWorks() {
+  return (database.prepare(`${workSelect} WHERE works.published = 1 ORDER BY works.created_at DESC, works.id DESC`).all() as any[])
+    .map(mapWork);
 }
 
-export function getChapter(publicSlug: string) {
-  return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE public_slug = ? AND published = 1
-  `).get(publicSlug) as ChapterRecord | undefined;
+export function getAllWorks() {
+  return (database.prepare(`${workSelect} ORDER BY works.created_at DESC, works.id DESC`).all() as any[]).map(mapWork);
 }
 
-export function getChapterBySlug(slug: string) {
-  return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE slug = ?
-  `).get(slug) as ChapterRecord | undefined;
+export function getWorksByOwner(ownerId: number, includeHidden = false) {
+  return (database.prepare(`${workSelect} WHERE works.owner_id = ? ${includeHidden ? "" : "AND works.published = 1"} ORDER BY works.created_at DESC, works.id DESC`).all(ownerId) as any[])
+    .map(mapWork);
 }
 
-export function getChapterByPublicSlug(publicSlug: string) {
-  return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE public_slug = ?
-  `).get(publicSlug) as ChapterRecord | undefined;
+export function getWorkBySlug(slug: string, includeHidden = false) {
+  const row = database.prepare(`${workSelect} WHERE works.slug = ? ${includeHidden ? "" : "AND works.published = 1"}`).get(slug);
+  return row ? mapWork(row) : undefined;
 }
 
-export function getChapterForEditing(slug: string) {
+export function getWorkById(id: number) {
+  const row = database.prepare(`${workSelect} WHERE works.id = ?`).get(id);
+  return row ? mapWork(row) : undefined;
+}
+
+export function canManageWork(user: PublicUser, workId: number) {
+  if (user.role === "admin") return true;
+  return Boolean(database.prepare("SELECT 1 FROM works WHERE id = ? AND owner_id = ?").get(workId, user.id));
+}
+
+export function createWork(ownerId: number) {
+  const slug = randomUUID();
+  const result = database.prepare(`
+    INSERT INTO works (slug, owner_id, title, description, published)
+    VALUES (?, ?, 'Новая работа', '', 0)
+  `).run(slug, ownerId);
+  return Number(result.lastInsertRowid);
+}
+
+export function ensureInitialWork(ownerId: number) {
+  database.prepare(`
+    INSERT OR IGNORE INTO works (
+      id, slug, owner_id, title, description, notes, cover_url,
+      cover_position_x, cover_position_y, cover_zoom, published
+    )
+    SELECT 1, 'phantom-freedom', ?, title, description, notes, cover_url,
+      cover_position_x, cover_position_y, cover_zoom, 1
+    FROM book_settings WHERE id = 1
+  `).run(ownerId);
+  database.prepare("UPDATE chapters SET work_id = 1 WHERE work_id IS NULL").run();
+}
+
+export function saveWork(id: number, settings: BookSettings) {
+  database.prepare(`
+    UPDATE works SET title = ?, description = ?, notes = ?, cover_url = ?,
+      cover_position_x = ?, cover_position_y = ?, cover_zoom = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    settings.title, settings.description, settings.notes, settings.coverUrl,
+    settings.coverPositionX, settings.coverPositionY, settings.coverZoom, id,
+  );
+}
+
+export function setWorkPublished(id: number, published: boolean) {
+  database.prepare("UPDATE works SET published = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(published ? 1 : 0, id);
+}
+
+export function deleteWork(id: number) {
+  database.prepare("DELETE FROM works WHERE id = ?").run(id);
+}
+
+export function getPublishedChapters(workId: number) {
   return database.prepare(`
     SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE slug = ?
-  `).get(slug) as ChapterRecord | undefined;
+    FROM chapters WHERE work_id = ? AND published = 1 ORDER BY sort_order, id
+  `).all(workId) as unknown as ChapterRecord[];
 }
+
+export function getAllChapters(workId: number) {
+  return database.prepare(`
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE work_id = ? ORDER BY sort_order, id
+  `).all(workId) as unknown as ChapterRecord[];
+}
+
+export function getChapter(workId: number, publicSlug: string) {
+  return database.prepare(`
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE work_id = ? AND public_slug = ? AND published = 1
+  `).get(workId, publicSlug) as ChapterRecord | undefined;
+}
+
+export function getChapterBySlug(workId: number, slug: string) {
+  return database.prepare(`
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE work_id = ? AND slug = ?
+  `).get(workId, slug) as ChapterRecord | undefined;
+}
+
+export function getChapterByPublicSlug(workId: number, publicSlug: string) {
+  return database.prepare(`
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    FROM chapters WHERE work_id = ? AND public_slug = ?
+  `).get(workId, publicSlug) as ChapterRecord | undefined;
+}
+
+export const getChapterForEditing = getChapterBySlug;
 
 export function saveChapter(chapter: ChapterRecord) {
   database.prepare(`
@@ -322,72 +656,36 @@ export function setChapterPublished(id: number, published: boolean) {
     .run(published ? 1 : 0, id);
 }
 
-export function getBookSettings() {
-  return database.prepare(`
-    SELECT title, description, notes, cover_url AS coverUrl,
-      cover_position_x AS coverPositionX, cover_position_y AS coverPositionY,
-      cover_zoom AS coverZoom
-    FROM book_settings WHERE id = 1
-  `).get() as BookSettings;
-}
-
-export function saveBookSettings(settings: BookSettings) {
-  database.prepare(`
-    UPDATE book_settings
-    SET title = ?, description = ?, notes = ?, cover_url = ?, cover_position_x = ?, cover_position_y = ?, cover_zoom = ?
-    WHERE id = 1
-  `).run(
-    settings.title,
-    settings.description,
-    settings.notes,
-    settings.coverUrl,
-    settings.coverPositionX,
-    settings.coverPositionY,
-    settings.coverZoom,
-  );
-}
-
-export function createChapter() {
+export function createChapter(workId: number) {
   const next = database.prepare(`
     SELECT COALESCE(MAX(sort_order), 0) + 1 AS sortOrder
-    FROM chapters
-  `).get() as { sortOrder: number };
+    FROM chapters WHERE work_id = ?
+  `).get(workId) as { sortOrder: number };
   const position = next.sortOrder;
-  const nextSlug = database.prepare(`
-    SELECT COALESCE(MAX(CAST(slug AS INTEGER)), 0) + 1 AS slug
-    FROM chapters
-    WHERE slug GLOB '[0-9]*'
-  `).get() as { slug: number };
-  const slug = String(nextSlug.slug);
+  const slug = randomUUID();
   const publicSlug = randomUUID();
   database.prepare(`
-    INSERT INTO chapters (slug, public_slug, number, title, subtitle, content, sort_order, published)
-    VALUES (?, ?, ?, 'Новая глава', '', '', ?, 0)
-  `).run(slug, publicSlug, String(position), position);
+    INSERT INTO chapters (work_id, slug, public_slug, number, title, subtitle, content, sort_order, published)
+    VALUES (?, ?, ?, ?, 'Новая глава', '', '', ?, 0)
+  `).run(workId, slug, publicSlug, String(position), position);
   return slug;
 }
 
-export function deleteChapter(id: number) {
-  database.prepare("DELETE FROM chapters WHERE id = ?").run(id);
-  normalizeChapterOrder();
+export function deleteChapter(workId: number, id: number) {
+  database.prepare("DELETE FROM chapters WHERE id = ? AND work_id = ?").run(id, workId);
+  normalizeChapterOrder(workId);
 }
 
-export function reorderChapters(ids: number[]) {
-  const existing = getAllChapters().map((chapter) => chapter.id);
+export function reorderChapters(workId: number, ids: number[]) {
+  const existing = getAllChapters(workId).map((chapter) => chapter.id);
   if (ids.length !== existing.length || !existing.every((id) => ids.includes(id))) {
     throw new Error("Invalid chapter order");
   }
 
   database.exec("BEGIN IMMEDIATE");
   try {
-    const update = database.prepare("UPDATE chapters SET sort_order = ? WHERE id = ?");
-    const temporarySlug = database.prepare("UPDATE chapters SET slug = ? WHERE id = ?");
-    ids.forEach((id, index) => {
-      update.run(index + 1, id);
-      temporarySlug.run(`__moving_${id}`, id);
-    });
-    const finalize = database.prepare("UPDATE chapters SET slug = ?, number = ? WHERE id = ?");
-    ids.forEach((id, index) => finalize.run(String(index + 1), String(index + 1), id));
+    const update = database.prepare("UPDATE chapters SET sort_order = ?, number = ? WHERE id = ? AND work_id = ?");
+    ids.forEach((id, index) => update.run(index + 1, String(index + 1), id, workId));
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");
@@ -395,8 +693,8 @@ export function reorderChapters(ids: number[]) {
   }
 }
 
-function normalizeChapterOrder() {
-  const ids = (database.prepare("SELECT id FROM chapters ORDER BY sort_order, id").all() as { id: number }[])
+function normalizeChapterOrder(workId = 1) {
+  const ids = (database.prepare("SELECT id FROM chapters WHERE work_id = ? ORDER BY sort_order, id").all(workId) as { id: number }[])
     .map((row) => row.id);
-  if (ids.length > 0) reorderChapters(ids);
+  if (ids.length > 0) reorderChapters(workId, ids);
 }

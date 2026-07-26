@@ -1,4 +1,4 @@
-import { data, Form, redirect } from "react-router";
+import { data, Form, Link, redirect } from "react-router";
 import type { Route } from "./+types/profile";
 import { changeUserPassword, getCurrentUser, verifyUserPassword } from "../auth.server";
 import { findUserByEmail, findUserByUsername, updateUserProfile } from "../database.server";
@@ -126,6 +126,18 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
             {actionData?.section === "profile" && actionData.ok && <p className="form-success">{text("Профиль сохранён.", "Профіль збережено.")}</p>}
             <button type="submit">{text("Сохранить профиль", "Зберегти профіль")}</button>
           </Form>
+        </div>
+        <div className="admin-section account-tier">
+          <p className="eyebrow">{text("Уровень аккаунта", "Рівень акаунта")}</p>
+          <h1>{loaderData.user.role === "admin" ? text("Администратор", "Адміністратор") : loaderData.user.accountPlus === 1 ? "Аккаунт+" : text("Обычный аккаунт", "Звичайний акаунт")}</h1>
+          {loaderData.user.role === "admin" || loaderData.user.accountPlus === 1 ? (
+            <>
+              <p>{text("Вам доступно создание неограниченного количества работ.", "Вам доступне створення необмеженої кількості робіт.")}</p>
+              <Link className="hero__button" to="/editor">{text("Перейти в редактор", "Перейти до редактора")} →</Link>
+            </>
+          ) : (
+            <p>{text("Аккаунт+ — бессрочное улучшение за $0.50. Оно откроет редактор и создание неограниченного количества работ. Подключение оплаты появится позже.", "Акаунт+ — безстрокове покращення за $0.50. Воно відкриє редактор і створення необмеженої кількості робіт. Підключення оплати з’явиться пізніше.")}</p>
+          )}
         </div>
         <div className="admin-section">
           <p className="eyebrow">{text("Безопасность", "Безпека")}</p>

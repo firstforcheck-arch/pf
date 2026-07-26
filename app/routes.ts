@@ -2,13 +2,20 @@ import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
   index("routes/home.tsx"),
-  route("chapters/:chapterId", "routes/chapter.tsx"),
+  route("works", "routes/works.tsx"),
+  route("works/:workSlug", "routes/work.tsx"),
+  route("works/:workSlug/chapters/:chapterId", "routes/chapter.tsx"),
+  route("users/:username", "routes/public-profile.tsx"),
+  route("messages/:username", "routes/messages.tsx"),
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
   route("logout", "routes/logout.tsx"),
   route("profile", "routes/profile.tsx"),
-  route("admin/chapters", "routes/admin-chapters.tsx"),
-  route("admin/chapters/:chapterId", "routes/admin-chapter.tsx"),
+  route("notifications", "routes/notifications.tsx"),
+  route("events", "routes/events.ts"),
+  route("editor", "routes/editor.tsx"),
+  route("editor/works/:workId", "routes/admin-chapters.tsx"),
+  route("editor/works/:workId/chapters/:chapterId", "routes/admin-chapter.tsx"),
 ] satisfies RouteConfig;

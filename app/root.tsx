@@ -11,15 +11,17 @@ import "./app.css";
 import { RouteLoader } from "./components/route-loader";
 import { getCurrentUser } from "./auth.server";
 import type { Route } from "./+types/root";
-import { getBookSettings } from "./database.server";
 import { ScrollMemoryButton } from "./components/scroll-memory-button";
 import { LocalizationProvider } from "./localization";
+import { getUnreadNotificationCount, getUserNotifications } from "./database.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const book = getBookSettings();
+  const user = await getCurrentUser(request);
   return {
-    user: await getCurrentUser(request),
-    book: { title: book.title, description: book.description, notes: book.notes },
+    user,
+    notifications: user ? getUserNotifications(user.id) : [],
+    unreadNotifications: user ? getUnreadNotificationCount(user.id) : 0,
+    book: { title: "Phantom Freedom", description: "Ваш уголок свободы" },
   };
 }
 

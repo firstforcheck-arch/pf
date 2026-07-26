@@ -1,115 +1,40 @@
 import type { Route } from "./+types/home";
-import { useEffect } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import { Header } from "../components/header";
-import { getBookSettings, getPublishedChapters } from "../database.server";
-import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
+import { getPublishedWorks } from "../database.server";
 import { useLocalization } from "../localization";
 
-export function meta({ loaderData }: Route.MetaArgs) {
-  const book = loaderData?.book;
-  return [
-    { title: book?.title ?? "Phantom Freedom" },
-    { name: "description", content: book?.description ?? "" },
-  ];
+export function meta() {
+  return [{ title: "Phantom Freedom — ваш уголок свободы" }];
 }
 
 export async function loader() {
-  const chapters = getPublishedChapters();
-  return {
-    book: getBookSettings(),
-    chapters,
-    totalPages: countTotalPages(chapters.map((chapter) => chapter.content)),
-  };
+  return { works: getPublishedWorks().slice(0, 3) };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { book, chapters, totalPages } = loaderData;
-  const location = useLocation();
-  const { language, text } = useLocalization();
+  const { text } = useLocalization();
+  return <main>
+    <section className="platform-hero">
+      <Header variant="overlay" />
+      <div className="hero__grid" /><div className="hero__glow" />
+      <div className="platform-hero__content">
+        <p className="eyebrow">{text("Пространство без цензуры", "Простір без цензури")}</p>
+        <h1>Phantom<br />Freedom</h1>
+        <p>{text("Ваш уголок свободы. Публикуйте и читайте истории на любые темы — без государственной цензуры и навязанных рамок.", "Ваш куточок свободи. Публікуйте та читайте історії на будь-які теми — без державної цензури й нав’язаних рамок.")}</p>
+        <Link className="hero__button" to="/works">{text("Смотреть работы", "Переглянути роботи")} →</Link>
+      </div>
+    </section>
+    <section className="works-preview section">
+      <div className="section__label">{text("Работы", "Роботи")}</div>
+      <div><div className="section-heading"><p className="eyebrow">{text("Читайте свободно", "Читайте вільно")}</p><h2>{text("Новые работы", "Нові роботи")}</h2></div><WorkGrid works={loaderData.works} /></div>
+    </section>
+  </main>;
+}
 
-  useEffect(() => {
-    if (location.hash !== "#chapters") return;
-
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById("chapters")?.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-        block: "start",
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [location.key, location.hash]);
-
-  return (
-    <>
-      <main>
-        <section className={`hero ${book.coverUrl ? "hero--with-cover" : ""}`}>
-          <div className="hero__grid" />
-          <div className="hero__glow" />
-          <Header variant="overlay" />
-          <div className="hero__content">
-            <h1>{book.title}</h1>
-            {book.coverUrl && (
-              <figure className="hero__cover">
-                <img
-                  src={book.coverUrl}
-                  alt={`${text("Обложка работы", "Обкладинка роботи")} ${book.title}`}
-                  style={{ transform: `translate(${50 - book.coverPositionX}%, ${50 - book.coverPositionY}%) scale(${book.coverZoom})` }}
-                />
-              </figure>
-            )}
-            <p className="hero__lead">{book.description}</p>
-            <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].publicSlug}` : "/#chapters"}>
-              {text("Начать читать", "Почати читати")} <span aria-hidden="true">↓</span>
-            </Link>
-          </div>
-          <div className="hero__aside">
-            <span>{formatChapters(chapters.length, language)} · {formatPages(totalPages, language)}</span>
-          </div>
-        </section>
-
-        <section className="about section">
-          <div className="section__label">{text("Примечания", "Примітки")}</div>
-          <div className="about__content">
-            <p className="about__quote">{text("Примечания", "Примітки")}</p>
-            <p className="book-notes">{book.notes || text("Примечаний пока нет.", "Приміток поки немає.")}</p>
-            <div className="book-stats">
-              <span><b>{text("Объём работы", "Обсяг роботи")}</b>{formatPages(totalPages, language)}</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="chapters section" id="chapters">
-          <div className="section__label">{text("Содержание", "Зміст")}</div>
-          <div className="chapters__content">
-            <div className="section-heading">
-              <p className="eyebrow">{text("Читать онлайн", "Читати онлайн")}</p>
-              <h2>{text("Главы", "Глави")}</h2>
-            </div>
-            <div className="chapter-list">
-              {chapters.map((chapter, index) => (
-                <Link className="chapter-card" to={`/chapters/${chapter.publicSlug}`} key={chapter.id}>
-                  <span className="chapter-card__number">{index + 1}</span>
-                  <span className="chapter-card__copy">
-                    <b>{chapter.title}</b>
-                    <small>{chapter.subtitle}</small>
-                  </span>
-                  <span className="chapter-card__arrow" aria-hidden="true">↗</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer>
-        <Link className="wordmark" to="/" aria-label={`${book.title} — ${text("на главную", "на головну")}`}>
-          <img src="/var5.png" alt="" />
-          <span>{book.title}</span>
-        </Link>
-        <span>© 2026</span>
-      </footer>
-    </>
-  );
+export function WorkGrid({ works }: { works: ReturnType<typeof getPublishedWorks> }) {
+  return <div className="work-grid">{works.map((work) => <Link className="work-card" to={`/works/${work.slug}`} key={work.id}>
+    <div className="work-card__cover">{work.coverUrl ? <img src={work.coverUrl} alt="" /> : <span>{work.title.slice(0, 1)}</span>}</div>
+    <div><h3>{work.title}</h3><p>{work.description}</p><small>@{work.owner.username}</small></div>
+  </Link>)}</div>;
 }
