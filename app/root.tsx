@@ -13,6 +13,7 @@ import { getCurrentUser } from "./auth.server";
 import type { Route } from "./+types/root";
 import { getBookSettings } from "./database.server";
 import { ScrollMemoryButton } from "./components/scroll-memory-button";
+import { LocalizationProvider } from "./localization";
 
 export async function loader({ request }: Route.LoaderArgs) {
   return { user: await getCurrentUser(request), book: getBookSettings() };
@@ -45,10 +46,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <>
+    <LocalizationProvider>
       <RouteLoader />
       <Outlet />
       <ScrollMemoryButton />
-    </>
+    </LocalizationProvider>
   );
 }

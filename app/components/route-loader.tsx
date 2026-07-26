@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigation } from "react-router";
+import { useLocalization } from "../localization";
 
 const banners = [
   { desktop: "/zradnyk.png", mobile: "/zradnyk_mobile.png" },
@@ -14,6 +15,7 @@ function randomBannerIndex(previous?: number) {
 }
 
 export function RouteLoader() {
+  const { text } = useLocalization();
   const location = useLocation();
   const navigation = useNavigation();
   const [visible, setVisible] = useState(true);
@@ -60,7 +62,7 @@ export function RouteLoader() {
       <div className="route-loader__veil" />
       <div className="route-loader__status">
         <span className="route-loader__ring" />
-        <span>Загрузка</span>
+        <span>{text("Загрузка", "Завантаження")}</span>
       </div>
     </div>
   );

@@ -22,10 +22,14 @@ function formatCount(value: number, one: string, few: string, many: string) {
   return `${value} ${word}`;
 }
 
-export function formatPages(pages: number) {
-  return formatCount(pages, "страница", "страницы", "страниц");
+export function formatPages(pages: number, language: "ru" | "uk" = "ru") {
+  return language === "uk"
+    ? formatCount(pages, "сторінка", "сторінки", "сторінок")
+    : formatCount(pages, "страница", "страницы", "страниц");
 }
 
-export function formatChapters(chapters: number) {
-  return formatCount(chapters, "глава", "главы", "глав");
+export function formatChapters(chapters: number, language: "ru" | "uk" = "ru") {
+  return language === "uk"
+    ? formatCount(chapters, "глава", "глави", "глав")
+    : formatCount(chapters, "глава", "главы", "глав");
 }

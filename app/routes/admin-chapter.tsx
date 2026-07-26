@@ -5,10 +5,11 @@ import { deleteChapter, getAllChapters, getChapterForEditing, saveChapter, setCh
 import { Header } from "../components/header";
 import { useState } from "react";
 import { countPages, countTotalPages, formatPages } from "../text-metrics";
+import { useLocalization } from "../localization";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const chapter = getChapterForEditing(Number(params.chapterId));
+  const chapter = getChapterForEditing(params.chapterId);
   if (!chapter) throw new Response("Глава не найдена", { status: 404 });
   const otherChapterTexts = getAllChapters()
     .filter((item) => item.id !== chapter.id)
@@ -18,7 +19,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 
 export async function action({ request, params }: Route.ActionArgs) {
   await requireAdmin(request);
-  const current = getChapterForEditing(Number(params.chapterId));
+  const current = getChapterForEditing(params.chapterId);
   if (!current) throw new Response("Глава не найдена", { status: 404 });
 
   const form = await request.formData();
@@ -28,7 +29,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   }
   if (form.get("intent") === "toggle-publication") {
     setChapterPublished(current.id, current.published !== 1);
-    return redirect(`/admin/chapters/${current.id}`);
+    return redirect(`/admin/chapters/${current.slug}`);
   }
 
   const chapter = {
@@ -51,6 +52,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function AdminChapter({ loaderData, actionData }: Route.ComponentProps) {
+  const { language, text } = useLocalization();
   const { chapter, otherChapterTexts } = loaderData;
   const navigate = useNavigate();
   const [content, setContent] = useState(chapter.content);
@@ -61,53 +63,53 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
   return (
     <main className="admin-page">
       <Header beforeAction={(
-        <a className="header-button" href={`/chapters/${chapter.slug}`}>Читать</a>
+        <a className="header-button" href={`/chapters/${chapter.slug}`}>{text("Читать", "Читати")}</a>
       )} />
       <section className="admin-shell admin-shell--editor">
         <div className="editor-heading-row">
-          <p className="eyebrow">Редактор</p>
+          <p className="eyebrow">{text("Редактор", "Редактор")}</p>
           <button className="editor-back-button" type="button" onClick={() => navigate(-1)}>
             <span aria-hidden="true">←</span>
-            Вернуться
+            {text("Вернуться", "Повернутися")}
           </button>
         </div>
         <h1>{chapter.title}</h1>
         <div className="editor-metrics" aria-live="polite">
           <div>
-            <span>Объём этой главы</span>
-            <b>{formatPages(pages)}</b>
+            <span>{text("Объём этой главы", "Обсяг цієї глави")}</span>
+            <b>{formatPages(pages, language)}</b>
           </div>
           <div>
-            <span>Вся работа</span>
-            <b>{formatPages(totalPages)}</b>
+            <span>{text("Вся работа", "Уся робота")}</span>
+            <b>{formatPages(totalPages, language)}</b>
           </div>
-          <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString("ru-RU")} символов · 1800 символов на страницу</small>
+          <small>{content.replace(/\s+/g, " ").trim().length.toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")} {text("символов", "символів")} · {text("1800 символов на страницу", "1800 символів на сторінку")}</small>
         </div>
         <Form method="post" className="editor-form">
-          <div className="chapter-position-note">Глава {chapter.number} · адрес /chapters/{chapter.slug}</div>
-          <label>Название<input name="title" defaultValue={chapter.title} required /></label>
-          <label>Краткое описание<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
-          <label>Текст главы<textarea className="editor-form__content" name="content" rows={28} value={content} onChange={(event) => setContent(event.currentTarget.value)} /></label>
-          <p className="editor-hint">Разделяйте абзацы одной пустой строкой. Одна условная страница равна 1800 знакам с пробелами.</p>
-          {actionData?.error && <p className="form-error">{actionData.error}</p>}
-          <button type="submit">Сохранить изменения</button>
+          <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · {text("адрес", "адреса")} /chapters/{chapter.slug}</div>
+          <label>{text("Название", "Назва")}<input name="title" defaultValue={chapter.title} required /></label>
+          <label>{text("Краткое описание", "Короткий опис")}<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
+          <label>{text("Текст главы", "Текст глави")}<textarea className="editor-form__content" name="content" rows={28} value={content} onChange={(event) => setContent(event.currentTarget.value)} /></label>
+          <p className="editor-hint">{text("Разделяйте абзацы одной пустой строкой. Одна условная страница равна 1800 знакам с пробелами.", "Розділяйте абзаци одним порожнім рядком. Одна умовна сторінка дорівнює 1800 знакам із пробілами.")}</p>
+          {actionData?.error && <p className="form-error">{text(actionData.error, actionData.error === "Название обязательно." ? "Назва обов’язкова." : "Не вдалося зберегти. Перевірте унікальність адреси глави.")}</p>}
+          <button type="submit">{text("Сохранить изменения", "Зберегти зміни")}</button>
         </Form>
         <div className="chapter-controls">
           <div className={`publication-zone ${chapter.published === 1 ? "publication-zone--published" : ""}`}>
             <div>
-              <b>Публикация главы</b>
-              <p>{chapter.published === 1 ? "Глава опубликована" : "Глава скрыта"}</p>
+              <b>{text("Публикация главы", "Публікація глави")}</b>
+              <p>{chapter.published === 1 ? text("Глава опубликована", "Главу опубліковано") : text("Глава скрыта", "Главу приховано")}</p>
             </div>
             <button type="button" onClick={() => setPublicationDialogOpen(true)}>
-              {chapter.published === 1 ? "Скрыть" : "Опубликовать"}
+              {chapter.published === 1 ? text("Скрыть", "Приховати") : text("Опубликовать", "Опублікувати")}
             </button>
           </div>
           <div className="danger-zone">
             <div>
-              <b>Удаление главы</b>
-              <p>Глава и весь её текст будут удалены без возможности восстановления.</p>
+              <b>{text("Удаление главы", "Видалення глави")}</b>
+              <p>{text("Глава и весь её текст будут удалены без возможности восстановления.", "Главу та весь її текст буде видалено без можливості відновлення.")}</p>
             </div>
-            <button type="button" onClick={() => setDeleteDialogOpen(true)}>Удалить главу</button>
+            <button type="button" onClick={() => setDeleteDialogOpen(true)}>{text("Удалить главу", "Видалити главу")}</button>
           </div>
         </div>
       </section>
@@ -116,14 +118,14 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           if (event.target === event.currentTarget) setDeleteDialogOpen(false);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="delete-title">
-            <p className="eyebrow">Удаление главы</p>
-            <h2 id="delete-title">Вы уверены?</h2>
-            <p>Это действие необратимо</p>
+            <p className="eyebrow">{text("Удаление главы", "Видалення глави")}</p>
+            <h2 id="delete-title">{text("Вы уверены?", "Ви впевнені?")}</h2>
+            <p>{text("Это действие необратимо", "Ця дія незворотна")}</p>
             <div className="confirm-modal__actions">
-              <button type="button" onClick={() => setDeleteDialogOpen(false)}>Нет</button>
+              <button type="button" onClick={() => setDeleteDialogOpen(false)}>{text("Нет", "Ні")}</button>
               <Form method="post">
                 <input type="hidden" name="intent" value="delete" />
-                <button type="submit">Да</button>
+                <button type="submit">{text("Да", "Так")}</button>
               </Form>
             </div>
           </section>
@@ -134,20 +136,20 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
           if (event.target === event.currentTarget) setPublicationDialogOpen(false);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="publication-title">
-            <p className="eyebrow">Публикация главы</p>
+            <p className="eyebrow">{text("Публикация главы", "Публікація глави")}</p>
             <h2 id="publication-title">
-              {chapter.published === 1 ? "Скрыть главу?" : "Опубликовать главу?"}
+              {chapter.published === 1 ? text("Скрыть главу?", "Приховати главу?") : text("Опубликовать главу?", "Опублікувати главу?")}
             </h2>
             <p>
               {chapter.published === 1
-                ? "Глава исчезнет из публичного списка и станет недоступна для чтения."
-                : "Глава появится в публичном списке и станет доступна читателям."}
+                ? text("Глава исчезнет из публичного списка и станет недоступна для чтения.", "Глава зникне з публічного списку та стане недоступною для читання.")
+                : text("Глава появится в публичном списке и станет доступна читателям.", "Глава з’явиться в публічному списку та стане доступною читачам.")}
             </p>
             <div className="confirm-modal__actions">
-              <button type="button" onClick={() => setPublicationDialogOpen(false)}>Нет</button>
+              <button type="button" onClick={() => setPublicationDialogOpen(false)}>{text("Нет", "Ні")}</button>
               <Form method="post" onSubmit={() => setPublicationDialogOpen(false)}>
                 <input type="hidden" name="intent" value="toggle-publication" />
-                <button type="submit">Да</button>
+                <button type="submit">{text("Да", "Так")}</button>
               </Form>
             </div>
           </section>

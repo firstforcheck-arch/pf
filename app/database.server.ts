@@ -37,7 +37,7 @@ database.exec(`
     subtitle TEXT NOT NULL DEFAULT '',
     reading_time TEXT NOT NULL DEFAULT '',
     content TEXT NOT NULL DEFAULT '',
-    published INTEGER NOT NULL DEFAULT 1,
+    published INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
   CREATE TABLE IF NOT EXISTS book_settings (
@@ -124,11 +124,11 @@ export function getChapterBySlug(slug: string) {
   `).get(slug) as ChapterRecord | undefined;
 }
 
-export function getChapterForEditing(id: number) {
+export function getChapterForEditing(slug: string) {
   return database.prepare(`
     SELECT id, slug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
-    FROM chapters WHERE id = ?
-  `).get(id) as ChapterRecord | undefined;
+    FROM chapters WHERE slug = ?
+  `).get(slug) as ChapterRecord | undefined;
 }
 
 export function saveChapter(chapter: ChapterRecord) {
@@ -159,11 +159,17 @@ export function createChapter() {
     FROM chapters
   `).get() as { sortOrder: number };
   const position = next.sortOrder;
-  const result = database.prepare(`
-    INSERT INTO chapters (slug, number, title, subtitle, content, sort_order)
-    VALUES (?, ?, 'Новая глава', '', '', ?)
-  `).run(String(position), String(position), position);
-  return Number(result.lastInsertRowid);
+  const nextSlug = database.prepare(`
+    SELECT COALESCE(MAX(CAST(slug AS INTEGER)), 0) + 1 AS slug
+    FROM chapters
+    WHERE slug GLOB '[0-9]*'
+  `).get() as { slug: number };
+  const slug = String(nextSlug.slug);
+  database.prepare(`
+    INSERT INTO chapters (slug, number, title, subtitle, content, sort_order, published)
+    VALUES (?, ?, 'Новая глава', '', '', ?, 0)
+  `).run(slug, String(position), position);
+  return slug;
 }
 
 export function deleteChapter(id: number) {

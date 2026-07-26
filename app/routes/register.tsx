@@ -3,6 +3,7 @@ import type { Route } from "./+types/register";
 import { createUserSession, getCurrentUser, register } from "../auth.server";
 import { findUserByEmail } from "../database.server";
 import { Header } from "../components/header";
+import { useLocalization } from "../localization";
 
 export function meta() {
   return [{ title: "Регистрация — Phantom Freedom" }];
@@ -29,20 +30,28 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function Register({ actionData }: Route.ComponentProps) {
+  const { text } = useLocalization();
+  const ukError = actionData?.error === "Введите корректную почту."
+    ? "Введіть коректну пошту."
+    : actionData?.error === "Пароль должен содержать не менее 8 символов."
+      ? "Пароль має містити щонайменше 8 символів."
+      : actionData?.error === "Пароли не совпадают."
+        ? "Паролі не збігаються."
+        : "Обліковий запис із такою поштою вже існує.";
   return (
     <main className="auth-page">
       <Header />
       <section className="auth-card">
-        <p className="eyebrow">Новый аккаунт</p>
-        <h1>Регистрация</h1>
+        <p className="eyebrow">{text("Новый аккаунт", "Новий обліковий запис")}</p>
+        <h1>{text("Регистрация", "Реєстрація")}</h1>
         <Form method="post" className="auth-form">
-          <label>Почта<input type="email" name="email" autoComplete="email" required /></label>
-          <label>Пароль<input type="password" name="password" minLength={8} autoComplete="new-password" required /></label>
-          <label>Повторите пароль<input type="password" name="confirmation" minLength={8} autoComplete="new-password" required /></label>
-          {actionData?.error && <p className="form-error">{actionData.error}</p>}
-          <button type="submit">Создать аккаунт</button>
+          <label>{text("Почта", "Пошта")}<input type="email" name="email" autoComplete="email" required /></label>
+          <label>{text("Пароль", "Пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" required /></label>
+          <label>{text("Повторите пароль", "Повторіть пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" required /></label>
+          {actionData?.error && <p className="form-error">{text(actionData.error, ukError)}</p>}
+          <button type="submit">{text("Создать аккаунт", "Створити обліковий запис")}</button>
         </Form>
-        <p className="auth-switch">Уже есть аккаунт? <Link to="/login">Войти</Link></p>
+        <p className="auth-switch">{text("Уже есть аккаунт?", "Вже є обліковий запис?")} <Link to="/login">{text("Войти", "Увійти")}</Link></p>
       </section>
     </main>
   );

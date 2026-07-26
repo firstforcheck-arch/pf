@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 import { Header } from "../components/header";
 import { getBookSettings, getPublishedChapters } from "../database.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
+import { useLocalization } from "../localization";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const book = loaderData?.book;
@@ -25,6 +26,7 @@ export async function loader() {
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { book, chapters, totalPages } = loaderData;
   const location = useLocation();
+  const { language, text } = useLocalization();
 
   useEffect(() => {
     if (location.hash !== "#chapters") return;
@@ -50,31 +52,31 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             <h1>{book.title}</h1>
             <p className="hero__lead">{book.description}</p>
             <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].slug}` : "/#chapters"}>
-              Начать читать <span aria-hidden="true">↓</span>
+              {text("Начать читать", "Почати читати")} <span aria-hidden="true">↓</span>
             </Link>
           </div>
           <div className="hero__aside">
-            <span>{formatChapters(chapters.length)} · {formatPages(totalPages)}</span>
+            <span>{formatChapters(chapters.length, language)} · {formatPages(totalPages, language)}</span>
           </div>
         </section>
 
         <section className="about section">
-          <div className="section__label">Примечания</div>
+          <div className="section__label">{text("Примечания", "Примітки")}</div>
           <div className="about__content">
-            <p className="about__quote">Примечания</p>
-            <p className="book-notes">{book.notes || "Примечаний пока нет."}</p>
+            <p className="about__quote">{text("Примечания", "Примітки")}</p>
+            <p className="book-notes">{book.notes || text("Примечаний пока нет.", "Приміток поки немає.")}</p>
             <div className="book-stats">
-              <span><b>Объём работы</b>{formatPages(totalPages)}</span>
+              <span><b>{text("Объём работы", "Обсяг роботи")}</b>{formatPages(totalPages, language)}</span>
             </div>
           </div>
         </section>
 
         <section className="chapters section" id="chapters">
-          <div className="section__label">Содержание</div>
+          <div className="section__label">{text("Содержание", "Зміст")}</div>
           <div className="chapters__content">
             <div className="section-heading">
-              <p className="eyebrow">Читать онлайн</p>
-              <h2>Главы</h2>
+              <p className="eyebrow">{text("Читать онлайн", "Читати онлайн")}</p>
+              <h2>{text("Главы", "Глави")}</h2>
             </div>
             <div className="chapter-list">
               {chapters.map((chapter) => (
@@ -93,11 +95,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       </main>
 
       <footer>
-        <Link className="wordmark" to="/" aria-label={`${book.title} — на главную`}>
+        <Link className="wordmark" to="/" aria-label={`${book.title} — ${text("на главную", "на головну")}`}>
           <img src="/var5.png" alt="" />
           <span>{book.title}</span>
         </Link>
-        <p>{book.description}</p>
         <span>© 2026</span>
       </footer>
     </>

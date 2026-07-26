@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router";
+import { useLocalization } from "../localization";
 
 export function ScrollMemoryButton() {
+  const { text } = useLocalization();
   const location = useLocation();
   const returnPosition = useRef(0);
   const [direction, setDirection] = useState<"up" | "down">("up");
@@ -32,8 +34,8 @@ export function ScrollMemoryButton() {
     <button
       className={`scroll-memory-button scroll-memory-button--${direction}`}
       type="button"
-      aria-label={direction === "up" ? "Прокрутить наверх" : "Вернуться к прежней позиции"}
-      title={direction === "up" ? "Наверх" : "Вернуться"}
+      aria-label={direction === "up" ? text("Прокрутить наверх", "Прокрутити нагору") : text("Вернуться к прежней позиции", "Повернутися до попередньої позиції")}
+      title={direction === "up" ? text("Наверх", "Нагору") : text("Вернуться", "Повернутися")}
       onClick={handleClick}
     >
       <span aria-hidden="true">↑</span>

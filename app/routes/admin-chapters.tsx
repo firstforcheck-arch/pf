@@ -11,6 +11,7 @@ import {
 } from "../database.server";
 import { Header } from "../components/header";
 import { countPages, countTotalPages, formatChapters, formatPages } from "../text-metrics";
+import { useLocalization } from "../localization";
 
 export function meta() {
   return [{ title: "Редактор — Phantom Freedom" }];
@@ -59,6 +60,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function AdminChapters({ loaderData, actionData }: Route.ComponentProps) {
+  const { language, text } = useLocalization();
   const reorderFetcher = useFetcher();
   const [chapters, setChapters] = useState(loaderData.chapters);
   const [draggedId, setDraggedId] = useState<number | null>(null);
@@ -85,43 +87,43 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
       <Header />
       <section className="admin-shell">
         <div className="admin-section">
-          <p className="eyebrow">Основная информация</p>
-          <h1>Шапка работы</h1>
+          <p className="eyebrow">{text("Основная информация", "Основна інформація")}</p>
+          <h1>{text("Шапка работы", "Шапка роботи")}</h1>
           <Form method="post" className="editor-form book-header-form">
             <input type="hidden" name="intent" value="save-book" />
-            <label>Название<input name="title" defaultValue={loaderData.book.title} required /></label>
-            <label>Описание<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
-            {actionData?.error && <p className="form-error">{actionData.error}</p>}
-            <button type="submit">Сохранить шапку</button>
+            <label>{text("Название", "Назва")}<input name="title" defaultValue={loaderData.book.title} required /></label>
+            <label>{text("Описание", "Опис")}<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
+            {actionData?.error && <p className="form-error">{text(actionData.error, "Назва не може бути порожньою.")}</p>}
+            <button type="submit">{text("Сохранить шапку", "Зберегти шапку")}</button>
           </Form>
         </div>
 
         <div className="admin-section">
-          <p className="eyebrow">Дополнительная информация</p>
-          <h1>Примечания</h1>
+          <p className="eyebrow">{text("Дополнительная информация", "Додаткова інформація")}</p>
+          <h1>{text("Примечания", "Примітки")}</h1>
           <Form method="post" className="editor-form book-header-form">
             <input type="hidden" name="intent" value="save-notes" />
-            <label>Текст примечания<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} /></label>
-            <button type="submit">Сохранить примечания</button>
+            <label>{text("Текст примечания", "Текст примітки")}<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} /></label>
+            <button type="submit">{text("Сохранить примечания", "Зберегти примітки")}</button>
           </Form>
         </div>
 
         <div className="admin-section">
-          <p className="eyebrow">Управление содержанием</p>
-          <h1>Главы</h1>
+          <p className="eyebrow">{text("Управление содержанием", "Керування вмістом")}</p>
+          <h1>{text("Главы", "Глави")}</h1>
           <div className="admin-summary">
-            <span>Общий объём текста</span>
+            <span>{text("Общий объём текста", "Загальний обсяг тексту")}</span>
             <div className="admin-summary__values">
-              <strong>{formatChapters(loaderData.chapters.length)}</strong>
-              <b>{formatPages(loaderData.totalPages)}</b>
+              <strong>{formatChapters(loaderData.chapters.length, language)}</strong>
+              <b>{formatPages(loaderData.totalPages, language)}</b>
             </div>
-            <small>Расчёт: 1800 символов на страницу</small>
+            <small>{text("Расчёт: 1800 символов на страницу", "Розрахунок: 1800 символів на сторінку")}</small>
           </div>
           <Form method="post">
             <input type="hidden" name="intent" value="create-chapter" />
             <button className="add-chapter-button" type="submit">
               <span>+</span>
-              Добавить главу
+              {text("Добавить главу", "Додати главу")}
             </button>
           </Form>
           <div className="admin-list">
@@ -136,19 +138,19 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
                   className="drag-handle"
                   type="button"
                   draggable
-                  aria-label={`Переместить главу ${chapter.title}`}
+                  aria-label={`${text("Переместить главу", "Перемістити главу")} ${chapter.title}`}
                   onDragStart={() => setDraggedId(chapter.id)}
                   onDragEnd={() => setDraggedId(null)}
                 >
                   <span>⠿</span>
                 </button>
                 <span>{chapter.number}</span>
-                <Link to={`/admin/chapters/${chapter.id}`}>{chapter.title}</Link>
+                <Link to={`/admin/chapters/${chapter.slug}`}>{chapter.title}</Link>
                 <strong className={`publication-badge ${chapter.published === 1 ? "publication-badge--yes" : ""}`}>
-                  Опубликована: {chapter.published === 1 ? "Да" : "Нет"}
+                  {text("Опубликована", "Опублікована")}: {chapter.published === 1 ? text("Да", "Так") : text("Нет", "Ні")}
                 </strong>
-                <em>{formatPages(chapter.pages)}</em>
-                <Link className="admin-list__edit" to={`/admin/chapters/${chapter.id}`}>Редактировать →</Link>
+                <em>{formatPages(chapter.pages, language)}</em>
+                <Link className="admin-list__edit" to={`/admin/chapters/${chapter.slug}`}>{text("Редактировать", "Редагувати")} →</Link>
               </div>
             ))}
           </div>

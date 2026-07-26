@@ -4,6 +4,7 @@ import { Header } from "../components/header";
 import { getBookSettings, getChapter, getChapterBySlug, getPublishedChapters } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
+import { useLocalization } from "../localization";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
@@ -22,6 +23,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 }
 
 export default function ChapterPage({ loaderData }: Route.ComponentProps) {
+  const { text } = useLocalization();
   const { chapter, chapters } = loaderData;
   const rootData = useRouteLoaderData<{ user: { email: string; role: "admin" | "reader" } | null }>("root");
 
@@ -30,9 +32,9 @@ export default function ChapterPage({ loaderData }: Route.ComponentProps) {
       <main className="reader reader--empty">
         <Header />
         <div className="reader__empty-content">
-          <p className="eyebrow">Ошибка 404</p>
-          <h1>Такой главы пока нет</h1>
-          <Link className="reader__back" to="/#chapters">← Вернуться к содержанию</Link>
+          <p className="eyebrow">{text("Ошибка 404", "Помилка 404")}</p>
+          <h1>{text("Такой главы пока нет", "Такої глави поки немає")}</h1>
+          <Link className="reader__back" to="/#chapters">← {text("Вернуться к содержанию", "Повернутися до змісту")}</Link>
         </div>
       </main>
     );
@@ -44,20 +46,20 @@ export default function ChapterPage({ loaderData }: Route.ComponentProps) {
 
   return (
     <main className="reader">
-      <Header profileEditorTo={`/admin/chapters/${chapter.id}`} action={(
+      <Header profileEditorTo={`/admin/chapters/${chapter.slug}`} action={(
         <div className="reader-header-actions">
           <ChapterSelect current={chapter} chapters={chapters} />
           {rootData?.user?.role === "admin" && (
-            <Link className="reader__edit" to={`/admin/chapters/${chapter.id}`}>Редактор</Link>
+            <Link className="reader__edit" to={`/admin/chapters/${chapter.slug}`}>{text("Редактор", "Редактор")}</Link>
           )}
-          <Link className="reader__back" to="/#chapters">← Все главы</Link>
+          <Link className="reader__back" to="/#chapters">← {text("Все главы", "Усі глави")}</Link>
         </div>
       )} />
 
       <article className="reader__article">
         <div className="reader__intro">
           <span className="reader__number">{chapter.number}</span>
-          <p className="eyebrow">Глава {chapter.slug}</p>
+          <p className="eyebrow">{text("Глава", "Глава")} {chapter.slug}</p>
           <h1>{chapter.title}</h1>
           <ChapterPagination previous={previous} next={next} position="intro" />
           {chapter.subtitle ? (
@@ -87,6 +89,7 @@ type SelectChapter = PaginationChapter & {
 };
 
 function ChapterSelect({ current, chapters }: { current: SelectChapter; chapters: SelectChapter[] }) {
+  const { text } = useLocalization();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -125,7 +128,7 @@ function ChapterSelect({ current, chapters }: { current: SelectChapter; chapters
         aria-haspopup="listbox"
         onClick={() => setOpen((value) => !value)}
       >
-        <span>Глава {current.number} — {current.title}</span>
+        <span>{text("Глава", "Глава")} {current.number} — {current.title}</span>
         <i aria-hidden="true" />
       </button>
       {open && (
@@ -133,11 +136,11 @@ function ChapterSelect({ current, chapters }: { current: SelectChapter; chapters
           <button
             className="chapter-select__backdrop"
             type="button"
-            aria-label="Закрыть выбор главы"
+            aria-label={text("Закрыть выбор главы", "Закрити вибір глави")}
             onClick={() => setOpen(false)}
           />
-          <div className="chapter-select__menu" role="dialog" aria-modal="true" aria-label="Выбор опубликованной главы">
-            <div className="chapter-select__menu-title">Перейти к главе</div>
+          <div className="chapter-select__menu" role="dialog" aria-modal="true" aria-label={text("Выбор опубликованной главы", "Вибір опублікованої глави")}>
+            <div className="chapter-select__menu-title">{text("Перейти к главе", "Перейти до глави")}</div>
             {chapters.map((item) => (
               <Link
                 className={item.id === current.id ? "chapter-select__option chapter-select__option--active" : "chapter-select__option"}
@@ -146,7 +149,7 @@ function ChapterSelect({ current, chapters }: { current: SelectChapter; chapters
                 key={item.id}
                 onClick={() => setOpen(false)}
               >
-                <small>Глава {item.number}</small>
+                <small>{text("Глава", "Глава")} {item.number}</small>
                 <span>{item.title}</span>
               </Link>
             ))}
@@ -166,26 +169,27 @@ function ChapterPagination({
   next?: PaginationChapter;
   position: "intro" | "footer";
 }) {
+  const { text } = useLocalization();
   return (
     <nav
       className={`reader__pagination reader__pagination--${position}`}
-      aria-label={position === "intro" ? "Навигация по главам перед текстом" : "Навигация по главам после текста"}
+      aria-label={position === "intro" ? text("Навигация по главам перед текстом", "Навігація главами перед текстом") : text("Навигация по главам после текста", "Навігація главами після тексту")}
     >
       {previous ? (
         <Link to={`/chapters/${previous.slug}`}>
-          <small>Предыдущая глава</small>
+          <small>{text("Предыдущая глава", "Попередня глава")}</small>
           <span>← {previous.title}</span>
         </Link>
       ) : <span />}
       {next ? (
         <Link to={`/chapters/${next.slug}`} className="reader__next">
-          <small>Следующая глава</small>
+          <small>{text("Следующая глава", "Наступна глава")}</small>
           <span>{next.title} →</span>
         </Link>
       ) : (
         <Link to="/#chapters" className="reader__next">
-          <small>Конец</small>
-          <span>К списку глав →</span>
+          <small>{text("Конец", "Кінець")}</small>
+          <span>{text("К списку глав", "До списку глав")} →</span>
         </Link>
       )}
     </nav>
