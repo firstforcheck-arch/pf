@@ -44,12 +44,21 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   return (
     <>
       <main>
-        <section className="hero">
+        <section className={`hero ${book.coverUrl ? "hero--with-cover" : ""}`}>
           <div className="hero__grid" />
           <div className="hero__glow" />
           <Header variant="overlay" />
           <div className="hero__content">
             <h1>{book.title}</h1>
+            {book.coverUrl && (
+              <figure className="hero__cover">
+                <img
+                  src={book.coverUrl}
+                  alt={`${text("Обложка работы", "Обкладинка роботи")} ${book.title}`}
+                  style={{ transform: `translate(${50 - book.coverPositionX}%, ${50 - book.coverPositionY}%) scale(${book.coverZoom})` }}
+                />
+              </figure>
+            )}
             <p className="hero__lead">{book.description}</p>
             <Link className="hero__button" to={chapters[0] ? `/chapters/${chapters[0].publicSlug}` : "/#chapters"}>
               {text("Начать читать", "Почати читати")} <span aria-hidden="true">↓</span>

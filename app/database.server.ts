@@ -28,7 +28,15 @@ export type ChapterRecord = {
   sortOrder: number;
   published: number;
 };
-export type BookSettings = { title: string; description: string; notes: string };
+export type BookSettings = {
+  title: string;
+  description: string;
+  notes: string;
+  coverUrl: string | null;
+  coverPositionX: number;
+  coverPositionY: number;
+  coverZoom: number;
+};
 
 const dataDirectory = join(process.cwd(), "data");
 mkdirSync(dataDirectory, { recursive: true });
@@ -134,6 +142,26 @@ try {
 }
 try {
   database.exec("ALTER TABLE book_settings ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
+  database.exec("ALTER TABLE book_settings ADD COLUMN cover_url TEXT");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
+  database.exec("ALTER TABLE book_settings ADD COLUMN cover_position_x REAL NOT NULL DEFAULT 50");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
+  database.exec("ALTER TABLE book_settings ADD COLUMN cover_position_y REAL NOT NULL DEFAULT 50");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+try {
+  database.exec("ALTER TABLE book_settings ADD COLUMN cover_zoom REAL NOT NULL DEFAULT 1");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
@@ -295,12 +323,28 @@ export function setChapterPublished(id: number, published: boolean) {
 }
 
 export function getBookSettings() {
-  return database.prepare("SELECT title, description, notes FROM book_settings WHERE id = 1").get() as BookSettings;
+  return database.prepare(`
+    SELECT title, description, notes, cover_url AS coverUrl,
+      cover_position_x AS coverPositionX, cover_position_y AS coverPositionY,
+      cover_zoom AS coverZoom
+    FROM book_settings WHERE id = 1
+  `).get() as BookSettings;
 }
 
 export function saveBookSettings(settings: BookSettings) {
-  database.prepare("UPDATE book_settings SET title = ?, description = ?, notes = ? WHERE id = 1")
-    .run(settings.title, settings.description, settings.notes);
+  database.prepare(`
+    UPDATE book_settings
+    SET title = ?, description = ?, notes = ?, cover_url = ?, cover_position_x = ?, cover_position_y = ?, cover_zoom = ?
+    WHERE id = 1
+  `).run(
+    settings.title,
+    settings.description,
+    settings.notes,
+    settings.coverUrl,
+    settings.coverPositionX,
+    settings.coverPositionY,
+    settings.coverZoom,
+  );
 }
 
 export function createChapter() {

@@ -16,7 +16,11 @@ import { ScrollMemoryButton } from "./components/scroll-memory-button";
 import { LocalizationProvider } from "./localization";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return { user: await getCurrentUser(request), book: getBookSettings() };
+  const book = getBookSettings();
+  return {
+    user: await getCurrentUser(request),
+    book: { title: book.title, description: book.description, notes: book.notes },
+  };
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
