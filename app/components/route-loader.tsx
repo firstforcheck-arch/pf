@@ -14,40 +14,88 @@ function randomBannerIndex(previous?: number) {
   return choices[Math.floor(Math.random() * choices.length)] ?? 0;
 }
 
+function initialBannerIndex(path: string) {
+  let hash = 0;
+  for (let index = 0; index < path.length; index += 1) {
+    hash = (hash * 31 + path.charCodeAt(index)) >>> 0;
+  }
+  return hash % banners.length;
+}
+
 export function RouteLoader() {
   const { text } = useLocalization();
   const location = useLocation();
   const navigation = useNavigation();
   const [visible, setVisible] = useState(true);
-  const [bannerIndex, setBannerIndex] = useState(0);
-  const firstRender = useRef(true);
+  const [bannerIndex, setBannerIndex] = useState(() =>
+    initialBannerIndex(`${location.pathname}${location.search}`),
+  );
+  const bannerIndexRef = useRef(bannerIndex);
+  const navigating = useRef(false);
+  const navigationIdle = useRef(true);
+  const loaderShown = useRef(true);
+  const loadRequest = useRef(0);
   const timer = useRef<number | undefined>(undefined);
 
-  const show = () => {
+  const hideLater = () => {
     window.clearTimeout(timer.current);
-    setBannerIndex((current) => randomBannerIndex(current));
+    timer.current = window.setTimeout(() => {
+      loaderShown.current = false;
+      setVisible(false);
+    }, DISPLAY_TIME);
+  };
+
+  const show = async () => {
+    window.clearTimeout(timer.current);
+    const request = ++loadRequest.current;
+    const next = randomBannerIndex(bannerIndexRef.current);
+    const source = window.matchMedia("(max-width: 700px)").matches
+      ? banners[next].mobile
+      : banners[next].desktop;
+    const image = new Image();
+    const loaded = new Promise<void>((resolve) => {
+      image.onload = () => resolve();
+      image.onerror = () => resolve();
+    });
+    image.src = source;
+
+    try {
+      await image.decode();
+    } catch {
+      await loaded;
+    }
+
+    if (request !== loadRequest.current) return;
+
+    bannerIndexRef.current = next;
+    loaderShown.current = true;
+    setBannerIndex(next);
     setVisible(true);
+
+    if (navigationIdle.current) hideLater();
   };
 
   useEffect(() => {
-    setBannerIndex(randomBannerIndex());
-    timer.current = window.setTimeout(() => setVisible(false), DISPLAY_TIME);
+    hideLater();
     return () => window.clearTimeout(timer.current);
   }, []);
 
   useEffect(() => {
-    if (navigation.state !== "idle") show();
-  }, [navigation.state]);
+    navigationIdle.current = navigation.state === "idle";
 
-  useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
+    if (navigation.state !== "idle") {
+      if (!navigating.current) {
+        navigating.current = true;
+        void show();
+      }
       return;
     }
 
-    show();
-    timer.current = window.setTimeout(() => setVisible(false), DISPLAY_TIME);
-  }, [location.key]);
+    if (navigating.current) {
+      navigating.current = false;
+      if (loaderShown.current) hideLater();
+    }
+  }, [navigation.state]);
 
   return (
     <div
