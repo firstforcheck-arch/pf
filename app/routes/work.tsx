@@ -91,7 +91,7 @@ export default function Work({ loaderData }: Route.ComponentProps) {
           </div>
         </section>
       </main>
-      <footer><Link className="wordmark" to="/"><img src="/var5.png" alt="" /><span>Phantom Freedom</span></Link><span>© 2026</span></footer>
+      <footer><Link className="wordmark" to="/"><img src="/logo4.png" alt="" /><span>Phantom Freedom</span></Link><span>© 2026</span></footer>
     </>
   );
 }

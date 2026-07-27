@@ -37,7 +37,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             __html: `(function(){try{var saved=localStorage.getItem("theme");var theme=saved||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;}catch(e){}})();`,
           }}
         />
-        <link rel="icon" type="image/png" href="/var5.png" />
+        <link rel="icon" type="image/png" href="/favicon.png" />
         <Meta />
         <Links />
       </head>

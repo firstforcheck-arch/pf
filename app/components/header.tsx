@@ -33,7 +33,7 @@ export function Header({ variant = "solid", action, beforeAction, profileEditorT
   return (
     <header className={`site-header site-header--${variant}`}>
       <Link className="wordmark" to="/" aria-label={`${rootData?.book.title ?? "Phantom Freedom"} — ${text("на главную", "на головну")}`}>
-        <img src="/var5.png" alt="" />
+        <img src="/logo4.png" alt="" />
         <span>{rootData?.book.title ?? "Phantom Freedom"}</span>
       </Link>
       <div className={`site-header__action ${user ? "site-header__action--authenticated" : ""}`}>
