@@ -273,12 +273,15 @@ function TagEditor({ workId, initialTags }: { workId: number; initialTags: impor
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const selectedIdKey = selectedTags.map((tag) => tag.id).sort((a, b) => a - b).join(",");
 
   useEffect(() => {
     if (!open) return;
-    const timeout = window.setTimeout(() => searchFetcher.load(`/editor/works/${workId}/tags/search?q=${encodeURIComponent(query)}`), 220);
+    const params = new URLSearchParams({ q: query });
+    selectedTags.forEach((tag) => params.append("exclude", String(tag.id)));
+    const timeout = window.setTimeout(() => searchFetcher.load(`/editor/works/${workId}/tags/search?${params}`), 220);
     return () => window.clearTimeout(timeout);
-  }, [open, query, workId]);
+  }, [open, query, workId, selectedIdKey]);
 
   useEffect(() => {
     const tag = createFetcher.data?.createdTag;

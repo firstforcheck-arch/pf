@@ -8,6 +8,7 @@ export default [
   route("works/:workId/engagement", "routes/work-engagement.tsx"),
   route("works/:workSlug/chapters/:chapterId", "routes/chapter.tsx"),
   route("users/:username", "routes/public-profile.tsx"),
+  route("tags/search", "routes/public-tag-search.ts"),
   route("tags/:tagSlug", "routes/tag.tsx"),
   route("messages/:username", "routes/messages.tsx"),
   route("login", "routes/login.tsx"),

@@ -1,9 +1,9 @@
-import { Form, Link } from "react-router";
+import { Form, Link, useFetcher } from "react-router";
 import { useEffect, useState } from "react";
 import type { Route } from "./+types/works";
 import { Header } from "../components/header";
 import { getCurrentUser } from "../auth.server";
-import { enrichWorkCards, getPublishedWorks } from "../database.server";
+import { enrichWorkCards, getPublishedTagsBySlugs, getPublishedWorks, type TagRecord } from "../database.server";
 import { WorkGrid } from "./home";
 import { useLocalization } from "../localization";
 
@@ -22,6 +22,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const minPages = pageCount(search.get("minPages"));
   const maxPages = pageCount(search.get("maxPages"));
   const sort = search.get("sort") === "popular" ? "popular" : "newest";
+  const selectedTagSlugs = [...new Set(search.getAll("tag").filter(Boolean))].slice(0, 20);
   const requestedPage = Math.max(1, Math.floor(Number(search.get("page"))) || 1);
   const normalizedQuery = query.toLocaleLowerCase("ru");
 
@@ -29,6 +30,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     .filter((work) => !normalizedQuery || work.title.toLocaleLowerCase("ru").includes(normalizedQuery))
     .filter((work) => minPages === null || work.totalPages >= minPages)
     .filter((work) => maxPages === null || work.totalPages <= maxPages)
+    .filter((work) => selectedTagSlugs.every((slug) => work.tags.some((tag) => tag.slug === slug)))
     .sort((left, right) => sort === "popular"
       ? right.likeCount - left.likeCount || Date.parse(right.createdAt) - Date.parse(left.createdAt)
       : Date.parse(right.createdAt) - Date.parse(left.createdAt));
@@ -37,7 +39,46 @@ export async function loader({ request }: Route.LoaderArgs) {
   const currentPage = totalPages === 0 ? 1 : Math.min(requestedPage, totalPages);
   const works = filteredWorks.slice((currentPage - 1) * 10, currentPage * 10);
 
-  return { works, filters: { query, minPages, maxPages, sort }, pagination: { currentPage, totalPages, totalWorks } };
+  return { works, selectedTags: getPublishedTagsBySlugs(selectedTagSlugs), filters: { query, minPages, maxPages, sort, selectedTagSlugs }, pagination: { currentPage, totalPages, totalWorks } };
+}
+
+function CatalogTagFilter({ initialTags }: { initialTags: TagRecord[] }) {
+  const { language, text } = useLocalization();
+  const fetcher = useFetcher<{ tags: TagRecord[] }>();
+  const [selectedTags, setSelectedTags] = useState(initialTags);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedKey = selectedTags.map((tag) => tag.slug).sort().join(",");
+
+  useEffect(() => {
+    if (!open) return;
+    const params = new URLSearchParams({ q: query });
+    selectedTags.forEach((tag) => params.append("exclude", tag.slug));
+    const timeout = window.setTimeout(() => fetcher.load(`/tags/search?${params}`), 220);
+    return () => window.clearTimeout(timeout);
+  }, [open, query, selectedKey]);
+
+  const tagName = (tag: TagRecord) => language === "uk" ? tag.nameUk : tag.nameRu;
+  return <fieldset className="catalog-tag-filter">
+    <legend>{text("Метки", "Мітки")}</legend>
+    {selectedTags.map((tag) => <input type="hidden" name="tag" value={tag.slug} key={tag.id} />)}
+    <div className="catalog-tag-filter__selected">
+      {selectedTags.map((tag) => <span key={tag.id}>{tagName(tag)}<button type="button" aria-label={`${text("Удалить метку", "Видалити мітку")} ${tagName(tag)}`} onClick={() => setSelectedTags((tags) => tags.filter((item) => item.id !== tag.id))}>×</button></span>)}
+    </div>
+    <div className="catalog-tag-filter__combobox">
+      <button className="catalog-tag-filter__toggle" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{selectedTags.length ? text("Добавить ещё", "Додати ще") : text("Выбрать метки", "Вибрати мітки")}</button>
+      {open && <div className="catalog-tag-filter__dropdown">
+        <label><span>{text("Поиск метки", "Пошук мітки")}</span><input autoFocus type="search" value={query} placeholder={text("Введите название метки", "Введіть назву мітки")} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="catalog-tag-filter__results" aria-busy={fetcher.state !== "idle"}>
+          {(fetcher.data?.tags ?? []).map((tag) => <button type="button" key={tag.id} onClick={() => setSelectedTags((tags) => [...tags, tag])}>
+            <span><strong>{tagName(tag)}</strong><small>{language === "uk" ? tag.descriptionUk : tag.descriptionRu}</small></span><b>{tag.workCount}</b>
+          </button>)}
+          {fetcher.state === "idle" && fetcher.data && !fetcher.data.tags.length && <p>{text("Подходящих меток не найдено.", "Відповідних міток не знайдено.")}</p>}
+        </div>
+        <small>{text("Показано не более 20 совпадений", "Показано не більше 20 збігів")}</small>
+      </div>}
+    </div>
+  </fieldset>;
 }
 
 function visiblePages(currentPage: number, totalPages: number) {
@@ -55,8 +96,8 @@ function visiblePages(currentPage: number, totalPages: number) {
 export default function Works({ loaderData }: Route.ComponentProps) {
   const { text } = useLocalization();
   const { filters } = loaderData;
-  const filtersActive = Boolean(filters.query || filters.minPages !== null || filters.maxPages !== null || filters.sort !== "newest");
-  const filterKey = `${filters.query}:${filters.minPages}:${filters.maxPages}:${filters.sort}`;
+  const filtersActive = Boolean(filters.query || filters.minPages !== null || filters.maxPages !== null || filters.sort !== "newest" || filters.selectedTagSlugs.length);
+  const filterKey = `${filters.query}:${filters.minPages}:${filters.maxPages}:${filters.sort}:${filters.selectedTagSlugs.join(",")}`;
   const [filtersOpen, setFiltersOpen] = useState(false);
   useEffect(() => {
     setFiltersOpen(false);
@@ -67,6 +108,7 @@ export default function Works({ loaderData }: Route.ComponentProps) {
     if (filters.minPages !== null) params.set("minPages", String(filters.minPages));
     if (filters.maxPages !== null) params.set("maxPages", String(filters.maxPages));
     if (filters.sort !== "newest") params.set("sort", filters.sort);
+    filters.selectedTagSlugs.forEach((slug) => params.append("tag", slug));
     if (page > 1) params.set("page", String(page));
     const query = params.toString();
     return query ? `/works?${query}` : "/works";
@@ -93,6 +135,7 @@ export default function Works({ loaderData }: Route.ComponentProps) {
             <label>{text("Страниц от", "Сторінок від")}<input type="search" inputMode="numeric" pattern="[0-9]*" name="minPages" placeholder="0" defaultValue={filters.minPages ?? ""} /></label>
             <label>{text("Страниц до", "Сторінок до")}<input type="search" inputMode="numeric" pattern="[0-9]*" name="maxPages" placeholder="1000" defaultValue={filters.maxPages ?? ""} /></label>
             <label>{text("Сортировка", "Сортування")}<select name="sort" defaultValue={filters.sort}><option value="newest">{text("Более новые", "Новіші")}</option><option value="popular">{text("Более популярные", "Популярніші")}</option></select></label>
+            <CatalogTagFilter initialTags={loaderData.selectedTags} />
             <div className="catalog-filters__actions">
               <Link to="/works">{text("Сбросить", "Скинути")}</Link>
               <button type="submit">{text("Применить", "Застосувати")}</button>

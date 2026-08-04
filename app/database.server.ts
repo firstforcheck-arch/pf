@@ -757,21 +757,73 @@ export function getAllTags() {
   `).all() as any[]).map(mapTag);
 }
 
-export function searchTags(query: string, limit = 20) {
+export function searchTags(query: string, limit = 20, excludedIds: number[] = []) {
   const normalizedQuery = normalizeTagName(query);
+  const validExcludedIds = [...new Set(excludedIds.filter(Number.isInteger))];
+  const exclusion = validExcludedIds.length ? `AND tags.id NOT IN (${validExcludedIds.map(() => "?").join(", ")})` : "";
   return (database.prepare(`
     SELECT tags.id, tags.slug, tags.name, tags.description,
       tags.name_ru AS nameRu, tags.name_uk AS nameUk,
       tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
       tags.source_language AS sourceLanguage, COUNT(work_tags.work_id) AS workCount
     FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
-    WHERE ? = '' OR instr(tags.name_ru_key, ?) > 0 OR instr(tags.name_uk_key, ?) > 0
+    WHERE (? = '' OR instr(tags.name_ru_key, ?) > 0 OR instr(tags.name_uk_key, ?) > 0)
+      ${exclusion}
     GROUP BY tags.id
     ORDER BY CASE WHEN tags.name_ru_key = ? OR tags.name_uk_key = ? THEN 0
       WHEN tags.name_ru_key LIKE ? OR tags.name_uk_key LIKE ? THEN 1 ELSE 2 END,
       workCount DESC, tags.name COLLATE NOCASE
     LIMIT ?
-  `).all(normalizedQuery, normalizedQuery, normalizedQuery, normalizedQuery, normalizedQuery, `${normalizedQuery}%`, `${normalizedQuery}%`, limit) as any[]).map(mapTag);
+  `).all(normalizedQuery, normalizedQuery, normalizedQuery, ...validExcludedIds,
+    normalizedQuery, normalizedQuery, `${normalizedQuery}%`, `${normalizedQuery}%`, limit) as any[]).map(mapTag);
+}
+
+export function getPopularPublishedTags(limit = 100) {
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, COUNT(DISTINCT works.id) AS workCount
+    FROM tags JOIN work_tags ON work_tags.tag_id = tags.id
+    JOIN works ON works.id = work_tags.work_id AND works.published = 1
+    GROUP BY tags.id ORDER BY workCount DESC, tags.name COLLATE NOCASE LIMIT ?
+  `).all(limit) as any[]).map(mapTag);
+}
+
+export function searchPublishedTags(query: string, limit = 20, excludedSlugs: string[] = []) {
+  const normalizedQuery = normalizeTagName(query);
+  const validExcludedSlugs = [...new Set(excludedSlugs.filter(Boolean))];
+  const exclusion = validExcludedSlugs.length ? `AND tags.slug NOT IN (${validExcludedSlugs.map(() => "?").join(", ")})` : "";
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, COUNT(DISTINCT works.id) AS workCount
+    FROM tags JOIN work_tags ON work_tags.tag_id = tags.id
+    JOIN works ON works.id = work_tags.work_id AND works.published = 1
+    WHERE (? = '' OR instr(tags.name_ru_key, ?) > 0 OR instr(tags.name_uk_key, ?) > 0)
+      ${exclusion}
+    GROUP BY tags.id
+    ORDER BY CASE WHEN tags.name_ru_key = ? OR tags.name_uk_key = ? THEN 0
+      WHEN tags.name_ru_key LIKE ? OR tags.name_uk_key LIKE ? THEN 1 ELSE 2 END,
+      workCount DESC, tags.name COLLATE NOCASE LIMIT ?
+  `).all(normalizedQuery, normalizedQuery, normalizedQuery, ...validExcludedSlugs,
+    normalizedQuery, normalizedQuery, `${normalizedQuery}%`, `${normalizedQuery}%`, limit) as any[]).map(mapTag);
+}
+
+export function getPublishedTagsBySlugs(slugs: string[]) {
+  const validSlugs = [...new Set(slugs.filter(Boolean))];
+  if (!validSlugs.length) return [];
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, COUNT(DISTINCT works.id) AS workCount
+    FROM tags JOIN work_tags ON work_tags.tag_id = tags.id
+    JOIN works ON works.id = work_tags.work_id AND works.published = 1
+    WHERE tags.slug IN (${validSlugs.map(() => "?").join(", ")})
+    GROUP BY tags.id ORDER BY tags.name COLLATE NOCASE
+  `).all(...validSlugs) as any[]).map(mapTag);
 }
 
 export function getWorkTags(workId: number) {

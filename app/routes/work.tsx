@@ -55,7 +55,6 @@ export default function Work({ loaderData }: Route.ComponentProps) {
             <h1>{book.title}</h1>
             {book.coverUrl && <figure className="hero__cover"><img src={book.coverUrl} alt={book.title} style={{ transform: `translate(${50 - book.coverPositionX}%, ${50 - book.coverPositionY}%) scale(${book.coverZoom})` }} /></figure>}
             {book.description.trim() && <p className="hero__lead">{book.description}</p>}
-            {loaderData.tags.length > 0 && <div className="hero__tags"><b>{text("Метки:", "Мітки:")}</b>{loaderData.tags.map((tag) => <Link className="tag-chip" to={`/tags/${tag.slug}`} key={tag.id}>{language === "uk" ? tag.nameUk : tag.nameRu}</Link>)}</div>}
             <div className="hero__buttons">
               <Link className="hero__button" to={chapters[0] ? `/works/${book.slug}/chapters/${chapters[0].publicSlug}` : "#chapters"}>{text("Начать читать", "Почати читати")} <span>↓</span></Link>
               {loaderData.user ? (
@@ -72,15 +71,16 @@ export default function Work({ loaderData }: Route.ComponentProps) {
           <div className="hero__aside"><span>{formatChapters(chapters.length, language)} · {formatPages(totalPages, language)}</span></div>
         </section>
         <section className="about section">
-          <div className="section__label">{text("Примечания", "Примітки")}</div>
+          <div className="section__label">{text("Примечания", "Нотатки")}</div>
           <div className="about__content">
             <div className="about__main">
-              <p className="about__quote">{text("Примечания", "Примітки")}</p>
+              <p className="about__quote">{text("Примечания", "Нотатки")}</p>
               <p className="book-notes">{book.notes || text("Примечаний пока нет.", "Приміток поки немає.")}</p>
               <Link className="author-card author-card--signature" to={`/users/${book.owner.username}`} aria-label={`${text("Автор работы", "Автор роботи")}: ${book.owner.username}`}>
                 <strong>{book.owner.username}</strong>
                 {book.owner.avatarUrl ? <img src={book.owner.avatarUrl} alt="" /> : <span>{book.owner.username[0].toUpperCase()}</span>}
               </Link>
+              {loaderData.tags.length > 0 && <div className="author-tags"><b>{text("Метки:", "Мітки:")}</b>{loaderData.tags.map((tag) => <Link className="tag-chip" to={`/tags/${tag.slug}`} key={tag.id}>{language === "uk" ? tag.nameUk : tag.nameRu}</Link>)}</div>}
               <div className="book-stats"><span><b>{text("Объём работы", "Обсяг роботи")}</b>{formatPages(totalPages, language)}</span></div>
             </div>
           </div>

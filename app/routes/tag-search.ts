@@ -4,6 +4,8 @@ import { searchTags } from "../database.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   await requireWorkManager(request, Number(params.workId));
-  const query = new URL(request.url).searchParams.get("q") ?? "";
-  return { tags: searchTags(query, 20) };
+  const search = new URL(request.url).searchParams;
+  const query = search.get("q") ?? "";
+  const excludedIds = search.getAll("exclude").map(Number).filter(Number.isInteger);
+  return { tags: searchTags(query, 20, excludedIds) };
 }
