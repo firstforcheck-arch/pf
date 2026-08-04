@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Form, isRouteErrorResponse, Link, useLocation } from "react-router";
 import { Header } from "../components/header";
 import { WorkUnavailable } from "../components/work-unavailable";
-import { getPublishedChapters, getWorkBySlug, isFollowingWork, setWorkFollowing } from "../database.server";
+import { getPublishedChapters, getWorkBySlug, getWorkTags, isFollowingWork, setWorkFollowing } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
@@ -17,7 +17,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   if (!book) throw new Response("Работа не найдена", { status: 404 });
   const user = await getCurrentUser(request);
   const chapters = getPublishedChapters(book.id);
-  return { book, chapters, user, following: user ? isFollowingWork(user.id, book.id) : false, totalPages: countTotalPages(chapters.map((chapter) => chapter.content)) };
+  return { book, chapters, tags: getWorkTags(book.id), user, following: user ? isFollowingWork(user.id, book.id) : false, totalPages: countTotalPages(chapters.map((chapter) => chapter.content)) };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {
@@ -55,6 +55,7 @@ export default function Work({ loaderData }: Route.ComponentProps) {
             <h1>{book.title}</h1>
             {book.coverUrl && <figure className="hero__cover"><img src={book.coverUrl} alt={book.title} style={{ transform: `translate(${50 - book.coverPositionX}%, ${50 - book.coverPositionY}%) scale(${book.coverZoom})` }} /></figure>}
             {book.description.trim() && <p className="hero__lead">{book.description}</p>}
+            {loaderData.tags.length > 0 && <div className="hero__tags"><b>{text("Метки:", "Мітки:")}</b>{loaderData.tags.map((tag) => <Link className="tag-chip" to={`/tags/${tag.slug}`} key={tag.id}>{language === "uk" ? tag.nameUk : tag.nameRu}</Link>)}</div>}
             <div className="hero__buttons">
               <Link className="hero__button" to={chapters[0] ? `/works/${book.slug}/chapters/${chapters[0].publicSlug}` : "#chapters"}>{text("Начать читать", "Почати читати")} <span>↓</span></Link>
               {loaderData.user ? (

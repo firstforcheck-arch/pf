@@ -8,6 +8,7 @@ export default [
   route("works/:workId/engagement", "routes/work-engagement.tsx"),
   route("works/:workSlug/chapters/:chapterId", "routes/chapter.tsx"),
   route("users/:username", "routes/public-profile.tsx"),
+  route("tags/:tagSlug", "routes/tag.tsx"),
   route("messages/:username", "routes/messages.tsx"),
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
@@ -20,5 +21,6 @@ export default [
   route("admin/users", "routes/admin-users.tsx"),
   route("editor", "routes/editor.tsx"),
   route("editor/works/:workId", "routes/admin-chapters.tsx"),
+  route("editor/works/:workId/tags/search", "routes/tag-search.ts"),
   route("editor/works/:workId/chapters/:chapterId", "routes/admin-chapter.tsx"),
 ] satisfies RouteConfig;

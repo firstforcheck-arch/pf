@@ -71,6 +71,11 @@ export default function Works({ loaderData }: Route.ComponentProps) {
     const query = params.toString();
     return query ? `/works?${query}` : "/works";
   };
+  const renderPagination = (position: "top" | "bottom") => loaderData.pagination.totalPages > 1 ? <nav className={`catalog-pagination ${position === "top" ? "catalog-pagination--top" : ""}`} aria-label={text("Навигация по страницам", "Навігація сторінками")}>
+    <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === 1 ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage - 1)} aria-disabled={loaderData.pagination.currentPage === 1} tabIndex={loaderData.pagination.currentPage === 1 ? -1 : undefined}><span aria-hidden="true">←</span><b>{text("Назад", "Назад")}</b></Link>
+    <div className="catalog-pagination__pages">{visiblePages(loaderData.pagination.currentPage, loaderData.pagination.totalPages).map((item) => typeof item === "number" ? <Link className={item === loaderData.pagination.currentPage ? "is-current" : ""} to={pageHref(item)} aria-current={item === loaderData.pagination.currentPage ? "page" : undefined} key={item}>{item}</Link> : <span aria-hidden="true" key={item}>•••</span>)}</div>
+    <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === loaderData.pagination.totalPages ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage + 1)} aria-disabled={loaderData.pagination.currentPage === loaderData.pagination.totalPages} tabIndex={loaderData.pagination.currentPage === loaderData.pagination.totalPages ? -1 : undefined}><b>{text("Вперёд", "Вперед")}</b><span aria-hidden="true">→</span></Link>
+  </nav> : null;
 
   return <main className="catalog-page">
     <Header />
@@ -95,12 +100,9 @@ export default function Works({ loaderData }: Route.ComponentProps) {
           </Form>}
         {filtersActive && <div className="catalog-filter-status"><span>{text("Фильтры применены", "Фільтри застосовано")}</span><Link to="/works">{text("Сбросить", "Скинути")} <b aria-hidden="true">×</b></Link></div>}
       </div>
+      {renderPagination("top")}
       {loaderData.works.length > 0 ? <WorkGrid works={loaderData.works} /> : <div className="catalog-empty"><p>{text("Работы по заданным параметрам не найдены.", "Робіт за заданими параметрами не знайдено.")}</p><Link to="/works">{text("Сбросить фильтры", "Скинути фільтри")}</Link></div>}
-      {loaderData.pagination.totalPages > 1 && <nav className="catalog-pagination" aria-label={text("Навигация по страницам", "Навігація сторінками")}>
-        <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === 1 ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage - 1)} aria-disabled={loaderData.pagination.currentPage === 1} tabIndex={loaderData.pagination.currentPage === 1 ? -1 : undefined}><span aria-hidden="true">←</span><b>{text("Назад", "Назад")}</b></Link>
-        <div className="catalog-pagination__pages">{visiblePages(loaderData.pagination.currentPage, loaderData.pagination.totalPages).map((item) => typeof item === "number" ? <Link className={item === loaderData.pagination.currentPage ? "is-current" : ""} to={pageHref(item)} aria-current={item === loaderData.pagination.currentPage ? "page" : undefined} key={item}>{item}</Link> : <span aria-hidden="true" key={item}>•••</span>)}</div>
-        <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === loaderData.pagination.totalPages ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage + 1)} aria-disabled={loaderData.pagination.currentPage === loaderData.pagination.totalPages} tabIndex={loaderData.pagination.currentPage === loaderData.pagination.totalPages ? -1 : undefined}><b>{text("Вперёд", "Вперед")}</b><span aria-hidden="true">→</span></Link>
-      </nav>}
+      {renderPagination("bottom")}
     </section>
   </main>;
 }

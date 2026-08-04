@@ -4,15 +4,19 @@ import type { Route } from "./+types/admin-chapters";
 import { requireWorkManager } from "../auth.server";
 import {
   createChapter,
+  createTag,
   getAllChapters,
   getWorkById,
+  getWorkTags,
   reorderChapters,
   saveWork,
+  setWorkTags,
   setWorkPublished,
 } from "../database.server";
 import { Header } from "../components/header";
 import { countPages, countTotalPages, formatChapters, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
+import { backfillTagTranslations, translateTagContent } from "../translation.server";
 
 export function meta() {
   return [{ title: "Редактор — Phantom Freedom" }];
@@ -21,6 +25,7 @@ export function meta() {
 export async function loader({ request, params }: Route.LoaderArgs) {
   const workId = Number(params.workId);
   await requireWorkManager(request, workId);
+  await backfillTagTranslations();
   const book = getWorkById(workId);
   if (!book) throw new Response("Работа не найдена", { status: 404 });
   const chapters = getAllChapters(workId);
@@ -28,6 +33,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     book,
     chapters: chapters.map((chapter) => ({ ...chapter, pages: countPages(chapter.content) })),
     totalPages: countTotalPages(chapters.map((chapter) => chapter.content)),
+    selectedTags: getWorkTags(workId),
   };
 }
 
@@ -40,6 +46,21 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (intent === "toggle-work-publication") {
     setWorkPublished(workId, form.get("published") === "yes");
     return { ok: true };
+  }
+
+  if (intent === "create-tag") {
+    const name = String(form.get("name") ?? "");
+    const description = String(form.get("description") ?? "");
+    const sourceLanguage = form.get("language") === "uk" ? "uk" : "ru";
+    let translation: Awaited<ReturnType<typeof translateTagContent>>;
+    try {
+      translation = await translateTagContent({ name, description, sourceLanguage });
+    } catch {
+      return { ok: false, tagError: "Не удалось автоматически перевести метку. Попробуйте ещё раз." };
+    }
+    const result = createTag({ name, description, sourceLanguage, ...translation });
+    if ("error" in result) return { ok: false, tagError: result.error };
+    return { ok: true, createdTag: result.tag };
   }
 
   if (intent === "save-book") {
@@ -69,6 +90,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       coverUrl = `data:${cover.type};base64,${Buffer.from(await cover.arrayBuffer()).toString("base64")}`;
     }
     saveWork(workId, { title, description, notes: current.notes, coverUrl, coverPositionX, coverPositionY, coverZoom });
+    setWorkTags(workId, form.getAll("tagId").map(Number).filter(Number.isInteger));
     return { ok: true };
   }
 
@@ -127,6 +149,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
             <input type="hidden" name="intent" value="save-book" />
             <label>{text("Название", "Назва")}<input name="title" defaultValue={loaderData.book.title} required /></label>
             <label>{text("Описание", "Опис")}<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
+            <TagEditor workId={loaderData.book.id} initialTags={loaderData.selectedTags} />
             <CoverEditor
               coverUrl={loaderData.book.coverUrl}
               initialX={loaderData.book.coverPositionX}
@@ -239,6 +262,104 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
 
 const MIN_COVER_ZOOM = 0.25;
 const MAX_COVER_ZOOM = 3;
+
+function TagEditor({ workId, initialTags }: { workId: number; initialTags: import("../database.server").TagRecord[] }) {
+  const { text, language } = useLocalization();
+  const searchFetcher = useFetcher<{ tags: import("../database.server").TagRecord[] }>();
+  const createFetcher = useFetcher<{ ok: boolean; createdTag?: import("../database.server").TagRecord; tagError?: string }>();
+  const [selectedTags, setSelectedTags] = useState(initialTags);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    const timeout = window.setTimeout(() => searchFetcher.load(`/editor/works/${workId}/tags/search?q=${encodeURIComponent(query)}`), 220);
+    return () => window.clearTimeout(timeout);
+  }, [open, query, workId]);
+
+  useEffect(() => {
+    const tag = createFetcher.data?.createdTag;
+    if (!tag) return;
+    setSelectedTags((tags) => tags.some((item) => item.id === tag.id) ? tags : [...tags, tag]);
+    setName("");
+    setDescription("");
+    setCreating(false);
+    setOpen(false);
+    setQuery("");
+  }, [createFetcher.data?.createdTag]);
+
+  useEffect(() => {
+    if (!creating) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCreating(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [creating]);
+
+  const results = searchFetcher.data?.tags ?? [];
+  const selectedIds = new Set(selectedTags.map((tag) => tag.id));
+  const availableResults = results.filter((tag) => !selectedIds.has(tag.id));
+  return <fieldset className="tag-editor">
+    <legend>{text("Метки", "Мітки")}</legend>
+    {selectedTags.map((tag) => <input key={tag.id} type="hidden" name="tagId" value={tag.id} />)}
+    <div className="tag-editor__selected">
+      {selectedTags.length ? selectedTags.map((tag) => <span className="tag-chip tag-chip--editable" key={tag.id}>
+        <Link to={`/tags/${tag.slug}`}>{localizedTagName(tag, language)}</Link>
+        <button type="button" aria-label={`${text("Удалить метку", "Видалити мітку")} ${localizedTagName(tag, language)}`} onClick={() => setSelectedTags((tags) => tags.filter((item) => item.id !== tag.id))}>×</button>
+      </span>) : <small>{text("Метки пока не выбраны.", "Мітки поки не вибрані.")}</small>}
+    </div>
+    <div className="tag-combobox">
+      <button className="tag-editor__toggle" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? text("Закрыть", "Закрити") : text("Добавить метку", "Додати мітку")}</button>
+      {open && <div className="tag-editor__panel">
+        <label className="tag-editor__search"><span>{text("Поиск метки", "Пошук мітки")}</span><input autoFocus value={query} placeholder={text("Начните вводить название…", "Почніть вводити назву…")} onChange={(event) => setQuery(event.target.value)} /></label>
+        <div className="tag-editor__list" aria-busy={searchFetcher.state !== "idle"}>
+          {availableResults.map((tag) => <button type="button" key={tag.id} onClick={() => setSelectedTags((tags) => [...tags, tag])}>
+            <span><strong>{localizedTagName(tag, language)}</strong><small>{localizedTagDescription(tag, language) || text("Без описания", "Без опису")}</small></span><b>{tag.workCount}</b>
+          </button>)}
+          {searchFetcher.state === "idle" && !availableResults.length && <p>{text("Других подходящих меток не найдено.", "Інших відповідних міток не знайдено.")}</p>}
+        </div>
+        <div className="tag-editor__panel-footer"><small>{text("Показано не более 20 совпадений", "Показано не більше 20 збігів")}</small><button className="tag-editor__create-toggle" type="button" onClick={() => { setCreating(true); setName(query); }}>+ {text("Создать метку", "Створити мітку")}</button></div>
+      </div>}
+    </div>
+    {creating && <div className="confirm-modal tag-create-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreating(false); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="create-tag-title">
+        <p className="eyebrow">{text("Новая метка", "Нова мітка")}</p>
+        <h2 id="create-tag-title">{text("Создать метку", "Створити мітку")}</h2>
+        <p>{text("Добавьте короткое понятное название и описание, которое поможет авторам выбрать данную метку.", "Додайте коротку зрозумілу назву й опис, які допоможуть авторам вибрати цю мітку.")}</p>
+        <p className="tag-create-modal__notice"><strong>{text("Перед созданием метки, пожалуйста, проверьте наличие похожей в системе.", "Перед створенням мітки, будь ласка, перевірте наявність схожої в системі.")}</strong></p>
+        <p className="tag-create-modal__language-warning"><strong>{text("Обязательно пишите текст метки на языке интерфейса.", "Обов’язково пишіть текст мітки мовою інтерфейсу.")}</strong></p>
+        <div className="tag-create-modal__fields">
+          <label>{text("Название", "Назва")}<input autoFocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} /></label>
+          <label>{text("Описание", "Опис")}<textarea value={description} maxLength={500} rows={4} onChange={(event) => setDescription(event.target.value)} /></label>
+          {createFetcher.data?.tagError && String(createFetcher.formData?.get("name") ?? "") === name && <p className="form-error">{text(createFetcher.data.tagError, translateTagError(createFetcher.data.tagError))}</p>}
+        </div>
+        <div className="confirm-modal__actions">
+          <button type="button" onClick={() => setCreating(false)}>{text("Отмена", "Скасувати")}</button>
+          <button type="button" disabled={!name.trim() || createFetcher.state !== "idle"} onClick={() => createFetcher.submit({ intent: "create-tag", name, description, language }, { method: "post" })}>{createFetcher.state === "submitting" ? text("Перевод…", "Переклад…") : text("Создать", "Створити")}</button>
+        </div>
+      </section>
+    </div>}
+  </fieldset>;
+}
+
+function translateTagError(error: string) {
+  if (error === "Введите название метки.") return "Введіть назву мітки.";
+  if (error === "Название метки не должно превышать 60 символов.") return "Назва мітки не повинна перевищувати 60 символів.";
+  if (error === "Описание метки не должно превышать 500 символов.") return "Опис мітки не повинен перевищувати 500 символів.";
+  if (error === "Такая метка уже существует.") return "Така мітка вже існує.";
+  if (error === "Не удалось автоматически перевести метку. Попробуйте ещё раз.") return "Не вдалося автоматично перекласти мітку. Спробуйте ще раз.";
+  return error;
+}
+
+function localizedTagName(tag: import("../database.server").TagRecord, language: "ru" | "uk") {
+  return language === "uk" ? tag.nameUk : tag.nameRu;
+}
+
+function localizedTagDescription(tag: import("../database.server").TagRecord, language: "ru" | "uk") {
+  return language === "uk" ? tag.descriptionUk : tag.descriptionRu;
+}
 
 function CoverEditor({
   coverUrl,

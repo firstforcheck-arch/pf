@@ -52,6 +52,7 @@ export function WorkGrid({ works }: { works: WorkCardRecord[] }) {
           <span><b>{text("Страницы", "Сторінки")}</b>{formatPages(work.totalPages, language)}</span>
           <span><b>{text("Главы", "Глави")}</b>{formatChapters(work.chapterCount, language)}</span>
         </div>
+        <div className="work-tags"><b>{text("Метки:", "Мітки:")}</b>{work.tags.length ? work.tags.map((tag) => <Link className="tag-chip" to={`/tags/${tag.slug}`} key={tag.id}>{language === "uk" ? tag.nameUk : tag.nameRu}</Link>) : <span className="work-tags__empty">—</span>}</div>
       </div>
       <p className="work-card__description">{work.description || text("Описание пока не добавлено.", "Опис поки не додано.")}</p>
     </div>

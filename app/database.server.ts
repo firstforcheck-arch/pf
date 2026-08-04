@@ -27,6 +27,19 @@ export type WorkCardRecord = WorkRecord & {
   likeCount: number;
   liked: boolean;
   following: boolean;
+  tags: TagRecord[];
+};
+export type TagRecord = {
+  id: number;
+  slug: string;
+  name: string;
+  description: string;
+  nameRu: string;
+  nameUk: string;
+  descriptionRu: string;
+  descriptionUk: string;
+  sourceLanguage: "ru" | "uk";
+  workCount: number;
 };
 export type CommentRecord = {
   id: number;
@@ -55,6 +68,10 @@ export type BookSettings = {
   coverPositionY: number;
   coverZoom: number;
 };
+
+function normalizeTagName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru-RU");
+}
 
 const dataDirectory = join(process.cwd(), "data");
 mkdirSync(dataDirectory, { recursive: true });
@@ -215,7 +232,69 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+  CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    name_key TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    name_ru TEXT,
+    name_uk TEXT,
+    description_ru TEXT,
+    description_uk TEXT,
+    name_ru_key TEXT,
+    name_uk_key TEXT,
+    source_language TEXT NOT NULL DEFAULT 'ru',
+    translation_complete INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE IF NOT EXISTS work_tags (
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_id, tag_id)
+  );
+  CREATE INDEX IF NOT EXISTS work_tags_tag_idx ON work_tags(tag_id, work_id);
 `);
+try {
+  database.exec("ALTER TABLE tags ADD COLUMN name_key TEXT");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+for (const statement of [
+  "ALTER TABLE tags ADD COLUMN name_ru TEXT",
+  "ALTER TABLE tags ADD COLUMN name_uk TEXT",
+  "ALTER TABLE tags ADD COLUMN description_ru TEXT",
+  "ALTER TABLE tags ADD COLUMN description_uk TEXT",
+  "ALTER TABLE tags ADD COLUMN name_ru_key TEXT",
+  "ALTER TABLE tags ADD COLUMN name_uk_key TEXT",
+  "ALTER TABLE tags ADD COLUMN source_language TEXT NOT NULL DEFAULT 'ru'",
+  "ALTER TABLE tags ADD COLUMN translation_complete INTEGER NOT NULL DEFAULT 0",
+]) {
+  try {
+    database.exec(statement);
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+  }
+}
+const storedTags = database.prepare("SELECT id, name FROM tags ORDER BY id").all() as { id: number; name: string }[];
+const tagIdByKey = new Map<string, number>();
+for (const tag of storedTags) {
+  const nameKey = normalizeTagName(tag.name);
+  const existingId = tagIdByKey.get(nameKey);
+  if (existingId) {
+    database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id) SELECT work_id, ? FROM work_tags WHERE tag_id = ?").run(existingId, tag.id);
+    database.prepare("DELETE FROM tags WHERE id = ?").run(tag.id);
+  } else {
+    tagIdByKey.set(nameKey, tag.id);
+    database.prepare(`UPDATE tags SET name_key = ?,
+      name_ru = COALESCE(NULLIF(name_ru, ''), name), name_uk = COALESCE(NULLIF(name_uk, ''), name),
+      description_ru = COALESCE(description_ru, description), description_uk = COALESCE(description_uk, description),
+      name_ru_key = COALESCE(NULLIF(name_ru_key, ''), ?), name_uk_key = COALESCE(NULLIF(name_uk_key, ''), ?)
+      WHERE id = ?`).run(nameKey, nameKey, nameKey, tag.id);
+  }
+}
+database.exec("CREATE UNIQUE INDEX IF NOT EXISTS tags_name_key_idx ON tags(name_key)");
 if (firstUser) {
   database.prepare(`
     INSERT OR IGNORE INTO works (
@@ -624,10 +703,22 @@ export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardR
     SELECT work_id AS workId, COUNT(*) AS likeCount
     FROM work_likes WHERE work_id IN (${placeholders}) GROUP BY work_id
   `).all(...ids) as { workId: number; likeCount: number }[];
+  const tagRows = database.prepare(`
+    SELECT work_tags.work_id AS workId, tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage,
+      (SELECT COUNT(*) FROM work_tags AS tag_usage WHERE tag_usage.tag_id = tags.id) AS workCount
+    FROM work_tags JOIN tags ON tags.id = work_tags.tag_id
+    WHERE work_tags.work_id IN (${placeholders})
+    ORDER BY tags.name COLLATE NOCASE
+  `).all(...ids) as (TagRecord & { workId: number })[];
   const likedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_likes WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
   const followedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_followers WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
   const metricById = new Map(metrics.map((row) => [row.workId, row]));
   const likesById = new Map(likes.map((row) => [row.workId, row.likeCount]));
+  const tagsById = new Map<number, TagRecord[]>();
+  for (const { workId, ...tag } of tagRows) tagsById.set(workId, [...(tagsById.get(workId) ?? []), tag]);
   return works.map((work) => {
     const metric = metricById.get(work.id);
     const characters = metric?.content.replace(/\s+/g, " ").trim().length ?? 0;
@@ -639,8 +730,143 @@ export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardR
       likeCount: likesById.get(work.id) ?? 0,
       liked: likedIds.has(work.id),
       following: followedIds.has(work.id),
+      tags: tagsById.get(work.id) ?? [],
     };
   });
+}
+
+function mapTag(row: any): TagRecord {
+  return {
+    id: row.id, slug: row.slug,
+    name: row.nameRu || row.name, description: row.descriptionRu ?? row.description,
+    nameRu: row.nameRu || row.name, nameUk: row.nameUk || row.name,
+    descriptionRu: row.descriptionRu ?? row.description, descriptionUk: row.descriptionUk ?? row.description,
+    sourceLanguage: row.sourceLanguage === "uk" ? "uk" : "ru",
+    workCount: Number(row.workCount ?? 0),
+  };
+}
+
+export function getAllTags() {
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, COUNT(work_tags.work_id) AS workCount
+    FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
+    GROUP BY tags.id ORDER BY tags.name COLLATE NOCASE
+  `).all() as any[]).map(mapTag);
+}
+
+export function searchTags(query: string, limit = 20) {
+  const normalizedQuery = normalizeTagName(query);
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, COUNT(work_tags.work_id) AS workCount
+    FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
+    WHERE ? = '' OR instr(tags.name_ru_key, ?) > 0 OR instr(tags.name_uk_key, ?) > 0
+    GROUP BY tags.id
+    ORDER BY CASE WHEN tags.name_ru_key = ? OR tags.name_uk_key = ? THEN 0
+      WHEN tags.name_ru_key LIKE ? OR tags.name_uk_key LIKE ? THEN 1 ELSE 2 END,
+      workCount DESC, tags.name COLLATE NOCASE
+    LIMIT ?
+  `).all(normalizedQuery, normalizedQuery, normalizedQuery, normalizedQuery, normalizedQuery, `${normalizedQuery}%`, `${normalizedQuery}%`, limit) as any[]).map(mapTag);
+}
+
+export function getWorkTags(workId: number) {
+  return (database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage,
+      (SELECT COUNT(*) FROM work_tags WHERE work_tags.tag_id = tags.id) AS workCount
+    FROM tags JOIN work_tags ON work_tags.tag_id = tags.id
+    WHERE work_tags.work_id = ? ORDER BY tags.name COLLATE NOCASE
+  `).all(workId) as any[]).map(mapTag);
+}
+
+export function createTag(input: { name: string; description: string; translatedName: string; translatedDescription: string; sourceLanguage: "ru" | "uk" }) {
+  const { name, description, translatedName, translatedDescription, sourceLanguage } = input;
+  const normalizedName = name.trim().replace(/\s+/g, " ");
+  const normalizedTranslation = translatedName.trim().replace(/\s+/g, " ");
+  const nameRu = sourceLanguage === "ru" ? normalizedName : normalizedTranslation;
+  const nameUk = sourceLanguage === "uk" ? normalizedName : normalizedTranslation;
+  const descriptionRu = sourceLanguage === "ru" ? description.trim() : translatedDescription.trim();
+  const descriptionUk = sourceLanguage === "uk" ? description.trim() : translatedDescription.trim();
+  const nameKey = normalizeTagName(normalizedName);
+  const nameRuKey = normalizeTagName(nameRu);
+  const nameUkKey = normalizeTagName(nameUk);
+  const normalizedDescription = description.trim();
+  if (!normalizedName) return { error: "Введите название метки." } as const;
+  if (normalizedName.length > 60) return { error: "Название метки не должно превышать 60 символов." } as const;
+  if (normalizedDescription.length > 500) return { error: "Описание метки не должно превышать 500 символов." } as const;
+  const existing = database.prepare(`SELECT id FROM tags WHERE name_ru_key IN (?, ?) OR name_uk_key IN (?, ?)`)
+    .get(nameRuKey, nameUkKey, nameRuKey, nameUkKey);
+  if (existing) return { error: "Такая метка уже существует." } as const;
+  try {
+    const result = database.prepare(`INSERT INTO tags (
+      slug, name, name_key, description, name_ru, name_uk, description_ru, description_uk,
+      name_ru_key, name_uk_key, source_language, translation_complete
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`)
+      .run(randomUUID(), normalizedName, nameKey, normalizedDescription, nameRu, nameUk,
+        descriptionRu, descriptionUk, nameRuKey, nameUkKey, sourceLanguage);
+    return { tag: getAllTags().find((tag) => tag.id === Number(result.lastInsertRowid))! } as const;
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("unique")) return { error: "Такая метка уже существует." } as const;
+    throw error;
+  }
+}
+
+export function getTagsPendingTranslation(limit = 20) {
+  return database.prepare(`SELECT id, name, description, source_language AS sourceLanguage
+    FROM tags WHERE translation_complete = 0 ORDER BY id LIMIT ?`).all(limit) as Array<{
+      id: number; name: string; description: string; sourceLanguage: "ru" | "uk";
+    }>;
+}
+
+export function saveTagTranslation(id: number, translatedName: string, translatedDescription: string, sourceLanguage: "ru" | "uk") {
+  const tag = database.prepare("SELECT name, description FROM tags WHERE id = ?").get(id) as { name: string; description: string } | undefined;
+  if (!tag) return;
+  const nameRu = sourceLanguage === "ru" ? tag.name : translatedName.trim();
+  const nameUk = sourceLanguage === "uk" ? tag.name : translatedName.trim();
+  const descriptionRu = sourceLanguage === "ru" ? tag.description : translatedDescription.trim();
+  const descriptionUk = sourceLanguage === "uk" ? tag.description : translatedDescription.trim();
+  database.prepare(`UPDATE tags SET name_ru = ?, name_uk = ?, description_ru = ?, description_uk = ?,
+    name_ru_key = ?, name_uk_key = ?, translation_complete = 1 WHERE id = ?`)
+    .run(nameRu, nameUk, descriptionRu, descriptionUk, normalizeTagName(nameRu), normalizeTagName(nameUk), id);
+}
+
+export function setWorkTags(workId: number, tagIds: number[]) {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.prepare("DELETE FROM work_tags WHERE work_id = ?").run(workId);
+    const insert = database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id) SELECT ?, id FROM tags WHERE id = ?");
+    for (const tagId of [...new Set(tagIds)]) insert.run(workId, tagId);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function getTagBySlug(slug: string) {
+  const row = database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage,
+      COUNT(CASE WHEN works.published = 1 THEN 1 END) AS workCount
+    FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
+    LEFT JOIN works ON works.id = work_tags.work_id
+    WHERE tags.slug = ? GROUP BY tags.id
+  `).get(slug);
+  return row ? mapTag(row) : undefined;
+}
+
+export function getPublishedWorksByTag(tagId: number) {
+  return (database.prepare(`${workSelect} JOIN work_tags ON work_tags.work_id = works.id
+    WHERE works.published = 1 AND work_tags.tag_id = ? ORDER BY works.created_at DESC, works.id DESC`).all(tagId) as any[]).map(mapWork);
 }
 
 export function getAllWorks() {
