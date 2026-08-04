@@ -1,8 +1,9 @@
 import type { Route } from "./+types/chapter";
 import { data, Form, isRouteErrorResponse, Link, useRouteLoaderData, useSearchParams } from "react-router";
 import { Header } from "../components/header";
+import { WorkActions } from "../components/work-actions";
 import { WorkUnavailable } from "../components/work-unavailable";
-import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug } from "../database.server";
+import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug, getWorkEngagement } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
@@ -24,7 +25,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const chapters = getPublishedChapters(book.id);
   const publishedChapter = book.published === 1 ? getChapter(book.id, params.chapterId) : undefined;
   const chapter = publishedChapter ?? (user && canManageWork(user, book.id) ? getChapterByPublicSlug(book.id, params.chapterId) : undefined);
-  return { chapter, chapters, book, canManage: Boolean(user && canManageWork(user, book.id)), comments: chapter ? getChapterComments(chapter.id) : [] };
+  return { chapter, chapters, book, canManage: Boolean(user && canManageWork(user, book.id)), comments: chapter ? getChapterComments(chapter.id) : [], engagement: getWorkEngagement(book.id, user?.id) };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {
@@ -58,7 +59,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 
 export default function ChapterPage({ loaderData, actionData }: Route.ComponentProps) {
   const { language, text } = useLocalization();
-  const { chapter, chapters, comments, book, canManage } = loaderData;
+  const { chapter, chapters, comments, book, canManage, engagement } = loaderData;
   const rootData = useRouteLoaderData<{ user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null }>("root");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
   const [searchParams] = useSearchParams();
@@ -99,7 +100,6 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
           <span className="reader__number">{publicNumber}</span>
           <p className="eyebrow">{text("Глава", "Глава")} {publicNumber}</p>
           <h1>{chapter.title}</h1>
-          <ChapterPagination previous={previous} next={next} position="intro" preview={preview} workSlug={book.slug} />
           {chapter.subtitle ? (
             <p className="reader__subtitle">{chapter.subtitle}</p>
           ) : (
@@ -112,6 +112,14 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
       </article>
 
       <ChapterPagination previous={previous} next={next} position="footer" preview={preview} workSlug={book.slug} />
+      <section className="reader-engagement" aria-label={text("Поддержать работу", "Підтримати роботу")}>
+        <div>
+          <p className="eyebrow">{text("Понравилась история?", "Сподобалася історія?")}</p>
+          <h2>{text("Поддержите работу", "Підтримайте роботу")}</h2>
+          <p>{text("Поставьте лайк и подпишитесь, чтобы не пропустить новые главы.", "Поставте вподобайку та підпишіться, щоб не пропустити нові глави.")}</p>
+        </div>
+        <WorkActions workId={book.id} likeCount={engagement.likeCount} liked={engagement.liked} following={engagement.following} variant="reader" />
+      </section>
       <section className="comments-section">
         <div className="section-heading">
           <p className="eyebrow">{text("Обсуждение", "Обговорення")}</p>
@@ -171,7 +179,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
         </div>
       </section>
       {commentToDelete !== null && (
-        <div className="confirm-modal" role="presentation" onMouseDown={(event) => {
+        <div className="confirm-modal comment-delete-modal" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setCommentToDelete(null);
         }}>
           <section role="dialog" aria-modal="true" aria-labelledby="delete-comment-title">
@@ -183,7 +191,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
               <Form method="post" onSubmit={() => setCommentToDelete(null)}>
                 <input type="hidden" name="intent" value="delete-comment" />
                 <input type="hidden" name="commentId" value={commentToDelete} />
-                <button type="submit">{text("Да, удалить", "Так, видалити")}</button>
+                <button type="submit">{text("Да", "Так")}</button>
               </Form>
             </div>
           </section>

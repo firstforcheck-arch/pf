@@ -36,8 +36,11 @@ export function Header({ variant = "solid", action, beforeAction, profileEditorT
         <img src="/logo4.png" alt="" />
         <span>{rootData?.book.title ?? "Phantom Freedom"}</span>
       </Link>
-      <div className={`site-header__action ${user ? "site-header__action--authenticated" : ""}`}>
+      <nav className="site-header__navigation">
         <Link className="header-works-link" to="/works">{text("Работы", "Роботи")}</Link>
+        <Link className="header-works-link" to="/about">{text("О платформе", "Про платформу")}</Link>
+      </nav>
+      <div className={`site-header__action ${user ? "site-header__action--authenticated" : ""}`}>
         <ThemeToggle className="theme-toggle--desktop" />
         <LanguageToggle className="language-toggle--desktop" />
         {beforeAction}
@@ -150,21 +153,32 @@ function ProfileMenu({
       <button className="profile-menu__backdrop" type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)} />
       <aside className="profile-menu__drawer" aria-hidden={!open} aria-label={text("Меню профиля", "Меню профілю")}>
         <div className="profile-menu__heading">
-          <div>
-            <small>{text("Профиль", "Профіль")}</small>
-            <strong>{user?.username ?? text("Гость", "Гість")}</strong>
-          </div>
+          {user ? (
+            <Link className="profile-menu__heading-user" to="/profile" onClick={() => setOpen(false)}>
+              <small>{text("Профиль", "Профіль")}</small>
+              <strong>{user.username}</strong>
+            </Link>
+          ) : (
+            <div className="profile-menu__heading-user">
+              <small>{text("Профиль", "Профіль")}</small>
+              <strong>{text("Гость", "Гість")}</strong>
+            </div>
+          )}
           <button type="button" aria-label={text("Закрыть меню профиля", "Закрити меню профілю")} onClick={() => setOpen(false)}>×</button>
         </div>
         <nav>
           {user && (
-            <Link to="/profile" onClick={() => setOpen(false)}>
+            <Link className="profile-menu__profile-link" to="/profile" onClick={() => setOpen(false)}>
               <span>{text("Профиль", "Профіль")}</span>
               <b aria-hidden="true">→</b>
             </Link>
           )}
           <Link className="profile-menu__works-link" to="/works" onClick={() => setOpen(false)}>
             <span>{text("Работы", "Роботи")}</span>
+            <b aria-hidden="true">→</b>
+          </Link>
+          <Link className="profile-menu__works-link" to="/about" onClick={() => setOpen(false)}>
+            <span>{text("О платформе", "Про платформу")}</span>
             <b aria-hidden="true">→</b>
           </Link>
           {(user?.role === "admin" || user?.accountPlus === 1) && (

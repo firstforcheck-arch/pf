@@ -20,6 +20,14 @@ export type WorkRecord = BookSettings & {
   published: number;
   createdAt: string;
 };
+export type WorkCardRecord = WorkRecord & {
+  chapterCount: number;
+  firstChapterSlug: string | null;
+  totalPages: number;
+  likeCount: number;
+  liked: boolean;
+  following: boolean;
+};
 export type CommentRecord = {
   id: number;
   content: string;
@@ -253,6 +261,12 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (work_id, user_id)
   );
+  CREATE TABLE IF NOT EXISTS work_likes (
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_id, user_id)
+  );
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -405,6 +419,27 @@ export function setWorkFollowing(userId: number, workId: number, following: bool
   } else {
     database.prepare("DELETE FROM work_followers WHERE work_id = ? AND user_id = ?").run(workId, userId);
   }
+}
+
+export function isLikingWork(userId: number, workId: number) {
+  return Boolean(database.prepare("SELECT 1 FROM work_likes WHERE user_id = ? AND work_id = ?").get(userId, workId));
+}
+
+export function setWorkLiked(userId: number, workId: number, liked: boolean) {
+  if (liked) {
+    database.prepare("INSERT OR IGNORE INTO work_likes (work_id, user_id) VALUES (?, ?)").run(workId, userId);
+  } else {
+    database.prepare("DELETE FROM work_likes WHERE work_id = ? AND user_id = ?").run(workId, userId);
+  }
+}
+
+export function getWorkEngagement(workId: number, userId?: number) {
+  const likeCount = (database.prepare("SELECT COUNT(*) AS count FROM work_likes WHERE work_id = ?").get(workId) as { count: number }).count;
+  return {
+    likeCount,
+    liked: userId ? isLikingWork(userId, workId) : false,
+    following: userId ? isFollowingWork(userId, workId) : false,
+  };
 }
 
 export function createChapterNotifications(workId: number, chapterId: number) {
@@ -561,9 +596,51 @@ function mapWork(row: any) {
   return { ...work, owner: { id: userId, username, avatarUrl } } as WorkRecord;
 }
 
-export function getPublishedWorks() {
-  return (database.prepare(`${workSelect} WHERE works.published = 1 ORDER BY works.created_at DESC, works.id DESC`).all() as any[])
+export function getPublishedWorks(limit?: number) {
+  const query = `${workSelect} WHERE works.published = 1 ORDER BY works.created_at DESC, works.id DESC${limit ? " LIMIT ?" : ""}`;
+  return ((limit ? database.prepare(query).all(limit) : database.prepare(query).all()) as any[])
     .map(mapWork);
+}
+
+export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardRecord[] {
+  if (works.length === 0) return [];
+  const placeholders = works.map(() => "?").join(", ");
+  const ids = works.map((work) => work.id);
+  const metrics = database.prepare(`
+    SELECT work_id AS workId, COUNT(*) AS chapterCount,
+      COALESCE(group_concat(content, char(10) || char(10)), '') AS content,
+      (
+        SELECT first_chapter.public_slug
+        FROM chapters AS first_chapter
+        WHERE first_chapter.work_id = chapters.work_id AND first_chapter.published = 1
+        ORDER BY first_chapter.sort_order, first_chapter.id
+        LIMIT 1
+      ) AS firstChapterSlug
+    FROM chapters
+    WHERE published = 1 AND work_id IN (${placeholders})
+    GROUP BY work_id
+  `).all(...ids) as { workId: number; chapterCount: number; content: string; firstChapterSlug: string }[];
+  const likes = database.prepare(`
+    SELECT work_id AS workId, COUNT(*) AS likeCount
+    FROM work_likes WHERE work_id IN (${placeholders}) GROUP BY work_id
+  `).all(...ids) as { workId: number; likeCount: number }[];
+  const likedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_likes WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
+  const followedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_followers WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
+  const metricById = new Map(metrics.map((row) => [row.workId, row]));
+  const likesById = new Map(likes.map((row) => [row.workId, row.likeCount]));
+  return works.map((work) => {
+    const metric = metricById.get(work.id);
+    const characters = metric?.content.replace(/\s+/g, " ").trim().length ?? 0;
+    return {
+      ...work,
+      chapterCount: metric?.chapterCount ?? 0,
+      firstChapterSlug: metric?.firstChapterSlug ?? null,
+      totalPages: characters === 0 ? 0 : Math.ceil(characters / 1800),
+      likeCount: likesById.get(work.id) ?? 0,
+      liked: likedIds.has(work.id),
+      following: followedIds.has(work.id),
+    };
+  });
 }
 
 export function getAllWorks() {

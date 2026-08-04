@@ -1,15 +1,19 @@
 import type { Route } from "./+types/home";
 import { Link } from "react-router";
 import { Header } from "../components/header";
-import { getPublishedWorks } from "../database.server";
+import { WorkActions } from "../components/work-actions";
+import { getCurrentUser } from "../auth.server";
+import { enrichWorkCards, getPublishedWorks, type WorkCardRecord } from "../database.server";
 import { useLocalization } from "../localization";
+import { formatChapters, formatPages } from "../text-metrics";
 
 export function meta() {
   return [{ title: "Phantom Freedom — ваш уголок свободы" }];
 }
 
-export async function loader() {
-  return { works: getPublishedWorks().slice(0, 3) };
+export async function loader({ request }: Route.LoaderArgs) {
+  const user = await getCurrentUser(request);
+  return { works: enrichWorkCards(getPublishedWorks(10), user?.id) };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
@@ -26,15 +30,34 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       </div>
     </section>
     <section className="works-preview section">
-      <div className="section__label">{text("Работы", "Роботи")}</div>
       <div><div className="section-heading"><p className="eyebrow">{text("Читайте свободно", "Читайте вільно")}</p><h2>{text("Новые работы", "Нові роботи")}</h2></div><WorkGrid works={loaderData.works} /></div>
     </section>
   </main>;
 }
 
-export function WorkGrid({ works }: { works: ReturnType<typeof getPublishedWorks> }) {
-  return <div className="work-grid">{works.map((work) => <Link className="work-card" to={`/works/${work.slug}`} key={work.id}>
-    <div className="work-card__cover">{work.coverUrl ? <img src={work.coverUrl} alt="" /> : <span>{work.title.slice(0, 1)}</span>}</div>
-    <div><h3>{work.title}</h3><p>{work.description}</p><small>@{work.owner.username}</small></div>
-  </Link>)}</div>;
+export function WorkGrid({ works }: { works: WorkCardRecord[] }) {
+  const { language, text } = useLocalization();
+  return <div className="work-grid">{works.map((work) => <article className="work-card" key={work.id}>
+    <Link className="work-card__cover" to={`/works/${work.slug}`} aria-label={work.title}>
+      {work.coverUrl ? <img src={work.coverUrl} alt="" style={{ transform: `translate(${50 - work.coverPositionX}%, ${50 - work.coverPositionY}%) scale(${work.coverZoom})` }} /> : <span>{work.title}</span>}
+    </Link>
+    <div className="work-card__body">
+      <div className="work-card__summary">
+        <Link className="work-card__title" to={`/works/${work.slug}`}><h3>{work.title}</h3></Link>
+        <Link className="work-card__author" to={`/users/${encodeURIComponent(work.owner.username)}`}>
+          {work.owner.avatarUrl ? <img src={work.owner.avatarUrl} alt="" /> : <span aria-hidden="true">{work.owner.username.slice(0, 1).toUpperCase()}</span>}
+          <small>{work.owner.username}</small>
+        </Link>
+        <div className="work-card__metrics">
+          <span><b>{text("Страницы", "Сторінки")}</b>{formatPages(work.totalPages, language)}</span>
+          <span><b>{text("Главы", "Глави")}</b>{formatChapters(work.chapterCount, language)}</span>
+        </div>
+      </div>
+      <p className="work-card__description">{work.description || text("Описание пока не добавлено.", "Опис поки не додано.")}</p>
+    </div>
+    <WorkActions workId={work.id} likeCount={work.likeCount} liked={work.liked} following={work.following} />
+    {work.firstChapterSlug ? <Link className="work-card__read" to={`/works/${work.slug}/chapters/${work.firstChapterSlug}`}>
+      <span>{text("Читать", "Читати")}</span><span aria-hidden="true">→</span>
+    </Link> : null}
+  </article>)}</div>;
 }

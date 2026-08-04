@@ -9,6 +9,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireCreator(request);
   return { user, works: user.role === "admin" ? getAllWorks() : getWorksByOwner(user.id, true) };
 }
+
 export async function action({ request }: Route.ActionArgs) {
   const user = await requireCreator(request);
   const form = await request.formData();
@@ -21,10 +22,24 @@ export async function action({ request }: Route.ActionArgs) {
   }
   return { ok: true };
 }
+
 export default function Editor({ loaderData }: Route.ComponentProps) {
   const { text } = useLocalization();
-  return <main className="admin-page"><Header /><section className="admin-shell"><p className="eyebrow">{text("Личный кабинет автора", "Особистий кабінет автора")}</p><h1>{text("Редактор", "Редактор")}</h1>
-    <Form method="post"><input type="hidden" name="intent" value="create" /><button className="add-chapter-button" type="submit"><span>+</span>{text("Создать работу", "Створити роботу")}</button></Form>
-    <div className="editor-work-list">{loaderData.works.map((work) => <article key={work.id}><Link to={`/editor/works/${work.id}`}><strong>{work.title}</strong><small>@{work.owner.username}</small></Link><Link to={`/works/${work.slug}`}>{text("Открыть", "Відкрити")} ↗</Link><Form method="post"><input type="hidden" name="intent" value="delete" /><input type="hidden" name="workId" value={work.id} /><button type="submit">{text("Удалить", "Видалити")}</button></Form></article>)}</div>
-  </section></main>;
+  return <main className="admin-page">
+    <Header />
+    <section className="admin-shell">
+      <p className="eyebrow">{text("Личный кабинет автора", "Особистий кабінет автора")}</p>
+      <div className="editor-page-heading">
+        <h1>{text("Редактор", "Редактор")}</h1>
+        <div className="editor-work-counter"><strong>{loaderData.works.length}</strong><span>{text("работ", "робіт")}</span></div>
+      </div>
+      <Form method="post"><input type="hidden" name="intent" value="create" /><button className="add-chapter-button" type="submit"><span>+</span>{text("Создать работу", "Створити роботу")}</button></Form>
+      <div className="editor-work-list">{loaderData.works.map((work) => <article key={work.id}>
+        <Link to={`/editor/works/${work.id}`}><strong>{work.title}</strong><small>@{work.owner.username}</small></Link>
+        <span className={`editor-work-status ${work.published === 1 ? "editor-work-status--published" : ""}`}><i aria-hidden="true" />{work.published === 1 ? text("Опубликована", "Опублікована") : text("Черновик", "Чернетка")}</span>
+        <Link to={`/works/${work.slug}`}>{text("Открыть", "Відкрити")} ↗</Link>
+        <Form method="post"><input type="hidden" name="intent" value="delete" /><input type="hidden" name="workId" value={work.id} /><button type="submit">{text("Удалить", "Видалити")}</button></Form>
+      </article>)}</div>
+    </section>
+  </main>;
 }

@@ -2,9 +2,11 @@ import {
   isRouteErrorResponse,
   Links,
   Meta,
+  matchPath,
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
 } from "react-router";
 
 import "./app.css";
@@ -14,6 +16,7 @@ import type { Route } from "./+types/root";
 import { ScrollMemoryButton } from "./components/scroll-memory-button";
 import { LocalizationProvider } from "./localization";
 import { getUnreadNotificationCount, getUserNotifications } from "./database.server";
+import { Footer } from "./components/footer";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getCurrentUser(request);
@@ -51,10 +54,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  const isChapterReader = Boolean(matchPath({ path: "/works/:workSlug/chapters/:chapterId", end: true }, pathname));
   return (
     <LocalizationProvider>
       <RouteLoader />
       <Outlet />
+      {!isChapterReader && <Footer />}
       <ScrollMemoryButton />
     </LocalizationProvider>
   );

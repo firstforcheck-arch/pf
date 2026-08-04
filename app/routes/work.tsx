@@ -49,12 +49,12 @@ export default function Work({ loaderData }: Route.ComponentProps) {
   return (
     <>
       <main>
-        <section className={`hero ${book.coverUrl ? "hero--with-cover" : ""}`}>
+        <section className={`hero ${book.coverUrl ? "hero--with-cover" : ""} ${book.description.trim() ? "" : "hero--without-description"}`}>
           <div className="hero__grid" /><div className="hero__glow" /><Header variant="overlay" />
           <div className="hero__content">
             <h1>{book.title}</h1>
             {book.coverUrl && <figure className="hero__cover"><img src={book.coverUrl} alt={book.title} style={{ transform: `translate(${50 - book.coverPositionX}%, ${50 - book.coverPositionY}%) scale(${book.coverZoom})` }} /></figure>}
-            <p className="hero__lead">{book.description}</p>
+            {book.description.trim() && <p className="hero__lead">{book.description}</p>}
             <div className="hero__buttons">
               <Link className="hero__button" to={chapters[0] ? `/works/${book.slug}/chapters/${chapters[0].publicSlug}` : "#chapters"}>{text("Начать читать", "Почати читати")} <span>↓</span></Link>
               {loaderData.user ? (
@@ -91,7 +91,6 @@ export default function Work({ loaderData }: Route.ComponentProps) {
           </div>
         </section>
       </main>
-      <footer><Link className="wordmark" to="/"><img src="/logo4.png" alt="" /><span>Phantom Freedom</span></Link><span>© 2026</span></footer>
     </>
   );
 }

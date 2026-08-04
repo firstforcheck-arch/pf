@@ -53,7 +53,10 @@ export async function action({ request, params }: Route.ActionArgs) {
     const requestedZoom = Number(form.get("coverZoom"));
     const coverPositionX = Number.isFinite(requestedX) ? Math.min(100, Math.max(0, requestedX)) : current.coverPositionX;
     const coverPositionY = Number.isFinite(requestedY) ? Math.min(100, Math.max(0, requestedY)) : current.coverPositionY;
-    const coverZoom = Number.isFinite(requestedZoom) ? Math.min(3, Math.max(1, requestedZoom)) : current.coverZoom;
+    if (!Number.isFinite(requestedZoom) || requestedZoom < 0.25 || requestedZoom > 3) {
+      return { ok: false, error: "Масштаб обложки должен быть от 0.25 до 3." };
+    }
+    const coverZoom = requestedZoom;
     let coverUrl = form.get("removeCover") === "yes" ? null : current.coverUrl;
     const cover = form.get("cover");
     if (cover instanceof File && cover.size > 0) {
@@ -134,6 +137,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
               actionData.error,
               actionData.error === "Название не может быть пустым." ? "Назва не може бути порожньою."
                 : actionData.error === "Размер обложки не должен превышать 5 МБ." ? "Розмір обкладинки не має перевищувати 5 МБ."
+                  : actionData.error === "Масштаб обложки должен быть от 0.25 до 3." ? "Масштаб обкладинки має бути від 0.25 до 3."
                   : "Обкладинка має бути у форматі JPG, PNG або WebP.",
             )}</p>}
             <button type="submit">{text("Сохранить шапку", "Зберегти шапку")}</button>
@@ -233,6 +237,9 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
   );
 }
 
+const MIN_COVER_ZOOM = 0.25;
+const MAX_COVER_ZOOM = 3;
+
 function CoverEditor({
   coverUrl,
   initialX,
@@ -250,6 +257,7 @@ function CoverEditor({
   const [draftPosition, setDraftPosition] = useState(position);
   const [zoom, setZoom] = useState(initialZoom);
   const [draftZoom, setDraftZoom] = useState(initialZoom);
+  const [draftZoomInput, setDraftZoomInput] = useState(initialZoom.toFixed(2));
   const [editorOpen, setEditorOpen] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
   const dragRef = useRef<{ x: number; y: number; positionX: number; positionY: number } | null>(null);
@@ -269,12 +277,14 @@ function CoverEditor({
     setDraftPosition(centered);
     setZoom(1);
     setDraftZoom(1);
+    setDraftZoomInput("1.00");
   }
 
   function openEditor() {
     if (!previewUrl) return;
     setDraftPosition(position);
     setDraftZoom(zoom);
+    setDraftZoomInput(zoom.toFixed(2));
     setEditorOpen(true);
   }
 
@@ -287,6 +297,12 @@ function CoverEditor({
       y: Math.min(100, Math.max(0, drag.positionY - ((event.clientY - drag.y) / bounds.height) * 100)),
     });
   }
+
+  const parsedDraftZoom = Number(draftZoomInput.replace(",", "."));
+  const zoomIsValid = draftZoomInput.trim() !== ""
+    && Number.isFinite(parsedDraftZoom)
+    && parsedDraftZoom >= MIN_COVER_ZOOM
+    && parsedDraftZoom <= MAX_COVER_ZOOM;
 
   return (
     <>
@@ -332,14 +348,34 @@ function CoverEditor({
             </div>
             <label className="cover-crop-zoom">
               <span>{text("Масштаб", "Масштаб")}</span>
-              <input type="range" min="1" max="3" step="0.01" value={draftZoom} onChange={(event) => setDraftZoom(Number(event.currentTarget.value))} />
-              <output>{draftZoom.toFixed(2)}×</output>
+              <input type="range" min={MIN_COVER_ZOOM} max={MAX_COVER_ZOOM} step="0.01" value={draftZoom} onChange={(event) => {
+                const value = Number(event.currentTarget.value);
+                setDraftZoom(value);
+                setDraftZoomInput(value.toFixed(2));
+              }} />
+              <span className="cover-crop-zoom__value">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={draftZoomInput}
+                  aria-label={text("Значение масштаба", "Значення масштабу")}
+                  aria-invalid={!zoomIsValid}
+                  onChange={(event) => {
+                    const input = event.currentTarget.value;
+                    setDraftZoomInput(input);
+                    const value = Number(input.replace(",", "."));
+                    if (Number.isFinite(value)) setDraftZoom(Math.min(MAX_COVER_ZOOM, Math.max(MIN_COVER_ZOOM, value)));
+                  }}
+                />
+                <b aria-hidden="true">×</b>
+              </span>
             </label>
+            {!zoomIsValid && <p className="cover-crop-zoom__error">{text("Введите значение от 0.25 до 3.", "Введіть значення від 0.25 до 3.")}</p>}
             <div className="confirm-modal__actions">
               <button type="button" onClick={() => setEditorOpen(false)}>{text("Отмена", "Скасувати")}</button>
-              <button type="button" onClick={() => {
+              <button type="button" disabled={!zoomIsValid} onClick={() => {
                 setPosition(draftPosition);
-                setZoom(draftZoom);
+                setZoom(parsedDraftZoom);
                 setEditorOpen(false);
               }}>{text("Применить", "Застосувати")}</button>
             </div>
