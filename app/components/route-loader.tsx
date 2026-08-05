@@ -32,7 +32,6 @@ export function RouteLoader() {
   );
   const bannerIndexRef = useRef(bannerIndex);
   const navigating = useRef(false);
-  const navigationIdle = useRef(true);
   const loaderShown = useRef(true);
   const loadRequest = useRef(0);
   const timer = useRef<number | undefined>(undefined);
@@ -45,34 +44,35 @@ export function RouteLoader() {
     }, DISPLAY_TIME);
   };
 
-  const show = async () => {
+  const show = () => {
     window.clearTimeout(timer.current);
     const request = ++loadRequest.current;
+    loaderShown.current = true;
+    setVisible(true);
+
     const next = randomBannerIndex(bannerIndexRef.current);
     const source = window.matchMedia("(max-width: 700px)").matches
       ? banners[next].mobile
       : banners[next].desktop;
     const image = new Image();
-    const loaded = new Promise<void>((resolve) => {
-      image.onload = () => resolve();
-      image.onerror = () => resolve();
-    });
-    image.src = source;
+    const prepareNextBanner = async () => {
+      const loaded = new Promise<void>((resolve) => {
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+      });
+      image.src = source;
 
-    try {
-      await image.decode();
-    } catch {
-      await loaded;
-    }
+      try {
+        await image.decode();
+      } catch {
+        await loaded;
+      }
 
-    if (request !== loadRequest.current) return;
-
-    bannerIndexRef.current = next;
-    loaderShown.current = true;
-    setBannerIndex(next);
-    setVisible(true);
-
-    if (navigationIdle.current) hideLater();
+      if (request !== loadRequest.current) return;
+      bannerIndexRef.current = next;
+      setBannerIndex(next);
+    };
+    void prepareNextBanner();
   };
 
   useEffect(() => {
@@ -81,12 +81,10 @@ export function RouteLoader() {
   }, []);
 
   useEffect(() => {
-    navigationIdle.current = navigation.state === "idle";
-
     if (navigation.state !== "idle") {
       if (!navigating.current) {
         navigating.current = true;
-        void show();
+        show();
       }
       return;
     }
