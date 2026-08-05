@@ -18,9 +18,9 @@ function applySecurityHeaders(headers: Headers, nonce: string) {
   const directives = [
     "default-src 'self'",
     `script-src ${scriptSources}`,
-    "style-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     `connect-src ${connectSources}`,
     "media-src 'self' data: blob:",
     "worker-src 'self' blob:",

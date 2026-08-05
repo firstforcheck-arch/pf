@@ -15,7 +15,22 @@ export function assertSameOrigin(request: Request) {
     if (process.env.NODE_ENV === "production") throw new Response("Не удалось подтвердить источник запроса.", { status: 403 });
     return;
   }
-  if (origin !== new URL(request.url).origin) throw new Response("Запрос с другого сайта отклонён.", { status: 403 });
+  const forwardedHost = request.headers.get("X-Forwarded-Host")?.split(",")[0]?.trim();
+  const forwardedProto = request.headers.get("X-Forwarded-Proto")?.split(",")[0]?.trim();
+  const requestOrigin = forwardedHost && (forwardedProto === "http" || forwardedProto === "https")
+    ? `${forwardedProto}://${forwardedHost}`
+    : new URL(request.url).origin;
+  let originValue: string;
+  let requestOriginValue: string;
+  try {
+    originValue = new URL(origin).origin;
+    requestOriginValue = new URL(requestOrigin).origin;
+  } catch {
+    throw new Response("Не удалось подтвердить источник запроса.", { status: 403 });
+  }
+  if (originValue !== requestOriginValue) {
+    throw new Response("Запрос с другого сайта отклонён.", { status: 403 });
+  }
 }
 
 export function enforceRateLimit(request: Request, scope: string, limit: number, windowSeconds: number, discriminator = "", includeClientIp = true) {
