@@ -6,6 +6,7 @@ import { createPasswordResetToken, findUserByEmail } from "../database.server";
 import { sendPasswordResetEmail } from "../mail.server";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { assertSameOrigin, enforceRateLimit } from "../security.server";
 
 export function meta() {
   return [{ title: "Восстановление пароля — Phantom Freedom" }];
@@ -17,19 +18,19 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  enforceRateLimit(request, "password-reset-request", 5, 60 * 60);
   const form = await request.formData();
   const email = String(form.get("email") ?? "").trim().toLowerCase();
+  enforceRateLimit(request, "password-reset-email", 3, 60 * 60, email, false);
   const user = findUserByEmail(email);
-  if (!user) return data({ status: "not-found" as const }, { status: 404 });
+  if (!user) return data({ status: "sent" as const });
 
   const token = randomBytes(32).toString("hex");
   const tokenHash = createHash("sha256").update(token).digest("hex");
   createPasswordResetToken(user.id, tokenHash, new Date(Date.now() + 60 * 60 * 1000).toISOString());
-  const sent = await sendPasswordResetEmail(email, token);
-  return data(
-    { status: sent ? "sent" as const : "delivery-failed" as const },
-    sent ? undefined : { status: 502 },
-  );
+  await sendPasswordResetEmail(email, token);
+  return data({ status: "sent" as const });
 }
 
 export default function ForgotPassword({ actionData }: Route.ComponentProps) {
@@ -46,12 +47,6 @@ export default function ForgotPassword({ actionData }: Route.ComponentProps) {
           <Form method="post" className="auth-form">
             <label>{text("Почта", "Пошта")}<input type="email" name="email" autoComplete="email" required /></label>
             <p className="editor-hint">{text("Укажите почту, сохранённую в профиле.", "Укажіть пошту, збережену в профілі.")}</p>
-            {actionData?.status === "not-found" && (
-              <p className="form-error">{text("Аккаунт с такой почтой не найден.", "Обліковий запис із такою поштою не знайдено.")}</p>
-            )}
-            {actionData?.status === "delivery-failed" && (
-              <p className="form-error">{text("Не удалось отправить письмо. Проверьте настройки почты или попробуйте позже.", "Не вдалося надіслати лист. Перевірте налаштування пошти або спробуйте пізніше.")}</p>
-            )}
             <button type="submit">{text("Отправить ссылку", "Надіслати посилання")}</button>
           </Form>
         )}

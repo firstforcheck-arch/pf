@@ -4,6 +4,7 @@ import { authenticate, createUserSession, getCurrentUser } from "../auth.server"
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
 import { useState } from "react";
+import { assertSameOrigin, enforceRateLimit } from "../security.server";
 
 export function meta() {
   return [{ title: "Вход — Phantom Freedom" }];
@@ -15,8 +16,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  assertSameOrigin(request);
   const form = await request.formData();
   const identifier = String(form.get("identifier") ?? "").trim();
+  enforceRateLimit(request, "login-ip", 30, 15 * 60);
+  enforceRateLimit(request, "login-account", 8, 15 * 60, identifier, false);
   const password = String(form.get("password") ?? "");
   const userId = await authenticate(identifier, password);
   if (!userId) return data({ error: "Неверный юзернейм, почта или пароль." }, { status: 400 });

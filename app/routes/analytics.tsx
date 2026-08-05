@@ -15,7 +15,7 @@ export default function Analytics({ loaderData }: Route.ComponentProps) {
   const number = new Intl.NumberFormat(language === "uk" ? "uk-UA" : "ru-RU");
   return <main className="admin-page analytics-page"><Header />
     <section className="admin-shell analytics-shell">
-      <p className="eyebrow">{text("Аккаунт+ · статистика", "Акаунт+ · статистика")}</p>
+      <p className="eyebrow">{text("Авторская статистика", "Авторська статистика")}</p>
       <div className="analytics-heading"><div><h1>{text("Аналитика", "Аналітика")}</h1><p>{text("Уникальные просмотры и вовлечённость читателей ваших работ.", "Унікальні перегляди та залученість читачів ваших робіт.")}</p></div><span>{loaderData.works.length}</span></div>
       <div className="analytics-work-grid">
         {loaderData.works.map((work) => <Link className="analytics-work-card" to={`/analytics/works/${work.id}`} key={work.id}>

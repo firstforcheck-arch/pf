@@ -6,6 +6,7 @@ import { isUserViewingDialog, publishUserEvent } from "../realtime.server";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
 import { useEffect, useRef, useState } from "react";
+import { enforceRateLimit, verifiedImageBytes } from "../security.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const user = await getCurrentUser(request);
@@ -31,6 +32,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     markDialogNotificationsRead(user.id, peer.id);
     return { error: null };
   }
+  enforceRateLimit(request, "messages", 60, 60, String(user.id));
   const messageId = Number(form.get("messageId"));
   if (intent === "delete") {
     if (!deleteMessage(messageId, user.id)) return data({ error: "Сообщение не найдено." }, { status: 404 });
@@ -52,7 +54,9 @@ export async function action({ request, params }: Route.ActionArgs) {
       return data({ error: "Поддерживаются изображения JPG, PNG, WebP и GIF." }, { status: 400 });
     }
     if (image.size > 5 * 1024 * 1024) return data({ error: "Изображение не должно превышать 5 МБ." }, { status: 400 });
-    imageUrl = `data:${image.type};base64,${Buffer.from(await image.arrayBuffer()).toString("base64")}`;
+    const bytes = await verifiedImageBytes(image, ["image/jpeg", "image/png", "image/webp", "image/gif"]);
+    if (!bytes) return data({ error: "Содержимое файла не соответствует заявленному формату изображения." }, { status: 400 });
+    imageUrl = `data:${image.type};base64,${Buffer.from(bytes).toString("base64")}`;
   }
   if (!content && !imageUrl) return data({ error: "Добавьте текст или изображение." }, { status: 400 });
   createMessage(user.id, peer.id, content, imageUrl, Number(form.get("replyToId")) || null, !isUserViewingDialog(peer.id, user.id));

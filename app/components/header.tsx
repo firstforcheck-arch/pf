@@ -12,7 +12,7 @@ type HeaderProps = {
 export function Header({ variant = "solid", action, beforeAction, profileEditorTo = "/editor" }: HeaderProps) {
   const { text } = useLocalization();
   const rootData = useRouteLoaderData<{
-    user: { username: string; avatarUrl: string | null; role: "admin" | "reader"; accountPlus: number } | null;
+    user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null;
     book: { title: string; description: string };
     unreadNotifications: number;
     notifications: NotificationItem[];
@@ -38,6 +38,7 @@ export function Header({ variant = "solid", action, beforeAction, profileEditorT
       </Link>
       <nav className="site-header__navigation">
         <Link className="header-works-link" to="/works">{text("Работы", "Роботи")}</Link>
+        <Link className="header-works-link" to="/for-authors">{text("Для авторов", "Для авторів")}</Link>
         <Link className="header-works-link" to="/about">{text("О платформе", "Про платформу")}</Link>
       </nav>
       <div className={`site-header__action ${user ? "site-header__action--authenticated" : ""}`}>
@@ -112,7 +113,7 @@ function ProfileMenu({
   user,
   editorTo,
 }: {
-  user: { username: string; avatarUrl: string | null; role: "admin" | "reader"; accountPlus: number } | null | undefined;
+  user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null | undefined;
   editorTo: string;
 }) {
   const { text } = useLocalization();
@@ -177,11 +178,7 @@ function ProfileMenu({
             <span>{text("Работы", "Роботи")}</span>
             <b aria-hidden="true">→</b>
           </Link>
-          <Link className="profile-menu__works-link profile-menu__about-link" to="/about" onClick={() => setOpen(false)}>
-            <span>{text("О платформе", "Про платформу")}</span>
-            <b aria-hidden="true">→</b>
-          </Link>
-          {(user?.role === "admin" || user?.accountPlus === 1) && (<>
+          {user && (<>
             <Link to={editorTo} onClick={() => setOpen(false)}>
               <span>{text("Редактор", "Редактор")}</span>
               <b aria-hidden="true">→</b>
@@ -194,6 +191,11 @@ function ProfileMenu({
               <b aria-hidden="true">→</b>
             </Link>
           )}
+          <Link className="profile-menu__works-link profile-menu__authors-link" to="/for-authors" onClick={() => setOpen(false)}><span>{text("Для авторов", "Для авторів")}</span><b aria-hidden="true">→</b></Link>
+          <Link className="profile-menu__works-link profile-menu__about-link" to="/about" onClick={() => setOpen(false)}>
+            <span>{text("О платформе", "Про платформу")}</span>
+            <b aria-hidden="true">→</b>
+          </Link>
           <div className="profile-menu__theme">
             <span>{text("Тёмная тема", "Темна тема")}</span>
             <ThemeToggle className="theme-toggle--mobile" showLabel />

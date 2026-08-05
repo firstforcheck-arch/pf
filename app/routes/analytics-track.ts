@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { data } from "react-router";
 import type { Route } from "./+types/analytics-track";
+import { enforceRateLimit } from "../security.server";
 import { getCurrentUser } from "../auth.server";
 import { recordChapterProgress, recordChapterView, recordWorkView } from "../database.server";
 
@@ -12,6 +13,7 @@ function readVisitorCookie(request: Request) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  enforceRateLimit(request, "analytics", 120, 60);
   const form = await request.formData();
   const workId = Number(form.get("workId"));
   const chapterId = Number(form.get("chapterId"));

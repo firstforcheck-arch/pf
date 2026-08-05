@@ -17,6 +17,7 @@ import { Header } from "../components/header";
 import { countPages, countTotalPages, formatChapters, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
 import { backfillTagTranslations, translateTagContent } from "../translation.server";
+import { verifiedImageBytes } from "../security.server";
 
 export function meta() {
   return [{ title: "Редактор — Phantom Freedom" }];
@@ -87,7 +88,9 @@ export async function action({ request, params }: Route.ActionArgs) {
       if (cover.size > 5 * 1024 * 1024) {
         return { ok: false, error: "Размер обложки не должен превышать 5 МБ." };
       }
-      coverUrl = `data:${cover.type};base64,${Buffer.from(await cover.arrayBuffer()).toString("base64")}`;
+      const bytes = await verifiedImageBytes(cover, ["image/jpeg", "image/png", "image/webp"]);
+      if (!bytes) return { ok: false, error: "Содержимое файла не соответствует заявленному формату изображения." };
+      coverUrl = `data:${cover.type};base64,${Buffer.from(bytes).toString("base64")}`;
     }
     saveWork(workId, { title, description, notes: current.notes, coverUrl, coverPositionX, coverPositionY, coverZoom });
     setWorkTags(workId, form.getAll("tagId").map(Number).filter(Number.isInteger));

@@ -2,7 +2,7 @@ import { data, Form, Link } from "react-router";
 import { useEffect, useState } from "react";
 import type { Route } from "./+types/public-profile";
 import { changeUserPassword, getCurrentUser } from "../auth.server";
-import { enrichWorkCards, getPublicUserByUsername, getWorksByOwner, setUserAccountPlus, updateUserProfile, findUserById } from "../database.server";
+import { enrichWorkCards, getPublicUserByUsername, getWorksByOwner, updateUserProfile, findUserById } from "../database.server";
 import { Header } from "../components/header";
 import { WorkGrid } from "./home";
 import { useLocalization } from "../localization";
@@ -22,7 +22,6 @@ export async function action({ request, params }: Route.ActionArgs) {
   if (!profile) throw new Response("Пользователь не найден", { status: 404 });
   const form = await request.formData();
   const user = findUserById(profile.id)!;
-  if (form.get("intent") === "account-plus" && profile.role !== "admin") setUserAccountPlus(profile.id, form.get("enabled") === "yes");
   if (form.get("intent") === "email") updateUserProfile(user.id, user.username, String(form.get("email") || "").trim() || null, user.avatarUrl);
   if (form.get("intent") === "password") {
     const password = String(form.get("password") ?? "");
@@ -62,12 +61,11 @@ export default function PublicProfile({ loaderData, actionData }: Route.Componen
       <img src={profile.avatarUrl} alt="" />
       <span className="public-profile-card__avatar-eye" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.75"/></svg></span>
     </button> : <span>{profile.username[0].toUpperCase()}</span>}
-    <div><p className="eyebrow">{profile.accountPlus === 1 || profile.role === "admin" ? "Аккаунт+" : text("Читатель", "Читач")}</p><h1>{profile.username}</h1><small className={isOnline ? "profile-presence profile-presence--online" : "profile-presence"}>{isOnline ? <><span className="profile-presence__dot" aria-hidden="true" />{text("Онлайн", "Онлайн")}</> : <>{text("Последний онлайн", "Останній онлайн")}: {new Date(lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`).toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")}</>}</small>
+    <div><p className="eyebrow">{profile.role === "admin" ? text("Администратор", "Адміністратор") : text("Автор и читатель", "Автор і читач")}</p><h1>{profile.username}</h1><small className={isOnline ? "profile-presence profile-presence--online" : "profile-presence"}>{isOnline ? <><span className="profile-presence__dot" aria-hidden="true" />{text("Онлайн", "Онлайн")}</> : <>{text("Последний онлайн", "Останній онлайн")}: {new Date(lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`).toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")}</>}</small>
       {loaderData.viewer?.id !== profile.id && <Link className="profile-message-button" to={loaderData.viewer ? `/messages/${profile.username}` : "/login"}>{text("Написать сообщение", "Написати повідомлення")}</Link>}
     </div>
   </div>
   {loaderData.isAdmin && loaderData.privateUser && <section className="admin-user-panel"><div className="admin-user-panel__heading"><p className="eyebrow">{text("Доступ администратора", "Доступ адміністратора")}</p><h2>{text("Управление пользователем", "Керування користувачем")}</h2></div>
-    {profile.role !== "admin" && <Form method="post" className="admin-user-panel__toggle"><input type="hidden" name="intent" value="account-plus" /><input type="hidden" name="enabled" value={profile.accountPlus === 1 ? "no" : "yes"} /><button type="submit">{profile.accountPlus === 1 ? text("Отключить Аккаунт+", "Вимкнути Акаунт+") : text("Выдать Аккаунт+", "Видати Акаунт+")}</button></Form>}
     <Form method="post" className="editor-form"><input type="hidden" name="intent" value="email" /><label>Email<input type="email" name="email" defaultValue={loaderData.privateUser.email ?? ""} /></label><button type="submit">{text("Сохранить почту", "Зберегти пошту")}</button></Form>
     <Form method="post" className="editor-form"><input type="hidden" name="intent" value="password" /><label>{text("Назначить новый пароль", "Призначити новий пароль")}<input type="password" name="password" minLength={8} /></label>{actionData?.error && <p className="form-error">{actionData.error}</p>}<button type="submit">{text("Сменить пароль", "Змінити пароль")}</button></Form>
   </section>}

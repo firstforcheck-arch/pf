@@ -1,9 +1,10 @@
-import { data, Form, Link, redirect } from "react-router";
+import { data, Form, redirect } from "react-router";
 import type { Route } from "./+types/profile";
 import { changeUserPassword, getCurrentUser, verifyUserPassword } from "../auth.server";
 import { findUserByEmail, findUserByUsername, updateUserProfile } from "../database.server";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { verifiedImageBytes } from "../security.server";
 
 export function meta() {
   return [{ title: "Профиль — Phantom Freedom" }];
@@ -63,7 +64,9 @@ export async function action({ request }: Route.ActionArgs) {
     if (avatar.size > 1024 * 1024) {
       return data({ ok: false, section: "profile", error: "Размер изображения не должен превышать 1 МБ." }, { status: 400 });
     }
-    avatarUrl = `data:${avatar.type};base64,${Buffer.from(await avatar.arrayBuffer()).toString("base64")}`;
+    const bytes = await verifiedImageBytes(avatar, ["image/jpeg", "image/png", "image/webp", "image/gif"]);
+    if (!bytes) return data({ ok: false, section: "profile", error: "Содержимое файла не соответствует заявленному формату изображения." }, { status: 400 });
+    avatarUrl = `data:${avatar.type};base64,${Buffer.from(bytes).toString("base64")}`;
   }
 
   updateUserProfile(user.id, username, email, avatarUrl);
@@ -126,18 +129,6 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
             {actionData?.section === "profile" && actionData.ok && <p className="form-success">{text("Профиль сохранён.", "Профіль збережено.")}</p>}
             <button type="submit">{text("Сохранить профиль", "Зберегти профіль")}</button>
           </Form>
-        </div>
-        <div className="admin-section account-tier">
-          <p className="eyebrow">{text("Уровень аккаунта", "Рівень акаунта")}</p>
-          <h1>{loaderData.user.role === "admin" ? text("Администратор", "Адміністратор") : loaderData.user.accountPlus === 1 ? "Аккаунт+" : text("Обычный аккаунт", "Звичайний акаунт")}</h1>
-          {loaderData.user.role === "admin" || loaderData.user.accountPlus === 1 ? (
-            <>
-              <p>{text("Вам доступно создание неограниченного количества работ.", "Вам доступне створення необмеженої кількості робіт.")}</p>
-              <Link className="hero__button" to="/editor">{text("Перейти в редактор", "Перейти до редактора")} →</Link>
-            </>
-          ) : (
-            <p>{text("Аккаунт+ — бессрочное улучшение за $0.50. Оно откроет редактор и создание неограниченного количества работ. Подключение оплаты появится позже.", "Акаунт+ — безстрокове покращення за $0.50. Воно відкриє редактор і створення необмеженої кількості робіт. Підключення оплати з’явиться пізніше.")}</p>
-          )}
         </div>
         <div className="admin-section">
           <p className="eyebrow">{text("Безопасность", "Безпека")}</p>

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
 import { AnalyticsTracker } from "../components/analytics-tracker";
 import { formatInlineText } from "../components/formatted-text";
+import { enforceRateLimit } from "../security.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
@@ -41,6 +42,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const chapter = publishedChapter ?? (canManageWork(user, book.id) ? getChapterByPublicSlug(book.id, params.chapterId) : undefined);
   if (!chapter) return data({ error: "Глава не найдена." }, { status: 404 });
   const form = await request.formData();
+  enforceRateLimit(request, "comments", 30, 60, String(user.id));
   if (form.get("intent") === "delete-comment") {
     if (!deleteComment(Number(form.get("commentId")), chapter.id, user.id, user.role === "admin")) return data({ error: "Недостаточно прав для удаления комментария." }, { status: 403 });
     return { error: null };

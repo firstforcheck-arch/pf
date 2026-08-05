@@ -5,6 +5,7 @@ import { changeUserPassword } from "../auth.server";
 import { consumePasswordResetToken } from "../database.server";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { assertSameOrigin, enforceRateLimit } from "../security.server";
 
 export function meta() {
   return [{ title: "Новый пароль — Phantom Freedom" }];
@@ -15,6 +16,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  enforceRateLimit(request, "password-reset-submit", 10, 60 * 60);
   const form = await request.formData();
   const token = String(form.get("token") ?? "");
   const password = String(form.get("password") ?? "");

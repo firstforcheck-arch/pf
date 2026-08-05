@@ -9,7 +9,7 @@ export type PublicUser = {
   email: string | null;
   avatarUrl: string | null;
   role: "admin" | "reader";
-  accountPlus: number;
+  sessionVersion: number;
   lastSeen: string;
 };
 export type WorkRecord = BookSettings & {
@@ -163,6 +163,11 @@ database.exec(`
     expires_at TEXT NOT NULL,
     used_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS security_rate_limits (
+    key TEXT PRIMARY KEY,
+    window_started INTEGER NOT NULL,
+    request_count INTEGER NOT NULL
+  );
 `);
 
 try {
@@ -171,12 +176,12 @@ try {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
 try {
-  database.exec("ALTER TABLE users ADD COLUMN account_plus INTEGER NOT NULL DEFAULT 0");
+  database.exec("ALTER TABLE users ADD COLUMN last_seen TEXT NOT NULL DEFAULT ''");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
 try {
-  database.exec("ALTER TABLE users ADD COLUMN last_seen TEXT NOT NULL DEFAULT ''");
+  database.exec("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
 }
@@ -210,11 +215,6 @@ try {
   database.exec("ALTER TABLE book_settings ADD COLUMN cover_zoom REAL NOT NULL DEFAULT 1");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
-}
-const firstUser = database.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get() as { id: number } | undefined;
-if (firstUser) {
-  database.prepare("UPDATE users SET username = username || '_legacy' WHERE username = 'Phantom_Fighter' AND id <> ?").run(firstUser.id);
-  database.prepare("UPDATE users SET username = 'Phantom_Fighter', role = 'admin', account_plus = 1 WHERE id = ?").run(firstUser.id);
 }
 database.exec(`
   CREATE TABLE IF NOT EXISTS works (
@@ -301,7 +301,8 @@ for (const tag of storedTags) {
   }
 }
 database.exec("CREATE UNIQUE INDEX IF NOT EXISTS tags_name_key_idx ON tags(name_key)");
-if (firstUser) {
+const initialWorkOwner = database.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1").get() as { id: number } | undefined;
+if (initialWorkOwner) {
   database.prepare(`
     INSERT OR IGNORE INTO works (
       id, slug, owner_id, title, description, notes, cover_url,
@@ -310,7 +311,7 @@ if (firstUser) {
     SELECT 1, 'phantom-freedom', ?, title, description, notes, cover_url,
       cover_position_x, cover_position_y, cover_zoom, 1
     FROM book_settings WHERE id = 1
-  `).run(firstUser.id);
+  `).run(initialWorkOwner.id);
 }
 try {
   database.exec("ALTER TABLE chapters ADD COLUMN work_id INTEGER REFERENCES works(id) ON DELETE CASCADE");
@@ -425,70 +426,61 @@ export function countUsers() {
   return (database.prepare("SELECT COUNT(*) AS count FROM users").get() as { count: number }).count;
 }
 
-export function createUser(username: string, passwordHash: string, role: PublicUser["role"]) {
+export function createUser(username: string, passwordHash: string) {
   const result = database
     .prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)")
-    .run(username, passwordHash, role);
+    .run(username, passwordHash, "reader");
   return Number(result.lastInsertRowid);
 }
 
 export function findUserByUsername(username: string) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE username = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, session_version AS sessionVersion, last_seen AS lastSeen FROM users WHERE username = ?")
     .get(username) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserByEmail(email: string) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE email = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, password_hash AS passwordHash, role, session_version AS sessionVersion, last_seen AS lastSeen FROM users WHERE email = ?")
     .get(email) as (PublicUser & { passwordHash: string }) | undefined;
 }
 
 export function findUserById(id: number) {
   return database
-    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, role, account_plus AS accountPlus, last_seen AS lastSeen FROM users WHERE id = ?")
+    .prepare("SELECT id, username, email, avatar_url AS avatarUrl, role, session_version AS sessionVersion, last_seen AS lastSeen FROM users WHERE id = ?")
     .get(id) as PublicUser | undefined;
 }
 
-export function getUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "", limit = 10, offset = 0) {
+export function getUsersForAdmin(adminId: number, username = "", email = "", limit = 10, offset = 0) {
   const usernameFilter = `%${username.trim()}%`;
   const emailFilter = `%${email.trim()}%`;
-  const accountPlusFilter = accessLevel === "account-plus" ? 1 : accessLevel === "reader" ? 0 : null;
   return database.prepare(`
-    SELECT id, username, email, avatar_url AS avatarUrl, role,
-      account_plus AS accountPlus, last_seen AS lastSeen
+    SELECT id, username, email, avatar_url AS avatarUrl, role, session_version AS sessionVersion, last_seen AS lastSeen
     FROM users
     WHERE id <> ?
       AND (? = '%%' OR username LIKE ? COLLATE NOCASE)
       AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)
-      AND (? IS NULL OR account_plus = ?)
     ORDER BY username COLLATE NOCASE, id
     LIMIT ? OFFSET ?
-  `).all(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter, limit, offset) as unknown as PublicUser[];
+  `).all(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, limit, offset) as unknown as PublicUser[];
 }
 
-export function countUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "") {
+export function countUsersForAdmin(adminId: number, username = "", email = "") {
   const usernameFilter = `%${username.trim()}%`;
   const emailFilter = `%${email.trim()}%`;
-  const accountPlusFilter = accessLevel === "account-plus" ? 1 : accessLevel === "reader" ? 0 : null;
   return (database.prepare(`SELECT COUNT(*) AS count FROM users WHERE id <> ?
     AND (? = '%%' OR username LIKE ? COLLATE NOCASE)
-    AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)
-    AND (? IS NULL OR account_plus = ?)`)
-    .get(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter) as { count: number }).count;
+    AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)`)
+    .get(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter) as { count: number }).count;
 }
 
 export function touchUser(id: number) {
   database.prepare("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?").run(id);
 }
 
-export function setUserAccountPlus(id: number, enabled: boolean) {
-  database.prepare("UPDATE users SET account_plus = ? WHERE id = ? AND role <> 'admin'").run(enabled ? 1 : 0, id);
-}
-
 export function getPublicUserByUsername(username: string) {
   return database.prepare(`
-    SELECT id, username, avatar_url AS avatarUrl, role, account_plus AS accountPlus, last_seen AS lastSeen
+    SELECT id, username, avatar_url AS avatarUrl, role, session_version AS sessionVersion, last_seen AS lastSeen
     FROM users WHERE username = ?
   `).get(username) as Omit<PublicUser, "email"> | undefined;
 }
@@ -499,7 +491,19 @@ export function updateUserProfile(id: number, username: string, email: string | 
 }
 
 export function updateUserPassword(id: number, passwordHash: string) {
-  database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, id);
+  database.prepare("UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?").run(passwordHash, id);
+}
+
+export function consumeRateLimit(key: string, limit: number, windowSeconds: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const row = database.prepare(`INSERT INTO security_rate_limits (key, window_started, request_count)
+    VALUES (?, ?, 1)
+    ON CONFLICT(key) DO UPDATE SET
+      request_count = CASE WHEN window_started <= ? THEN 1 ELSE request_count + 1 END,
+      window_started = CASE WHEN window_started <= ? THEN excluded.window_started ELSE window_started END
+    RETURNING window_started AS windowStarted, request_count AS requestCount`)
+    .get(key, now, now - windowSeconds, now - windowSeconds) as { windowStarted: number; requestCount: number };
+  return { allowed: row.requestCount <= limit, retryAfter: Math.max(1, row.windowStarted + windowSeconds - now) };
 }
 
 export function getChapterComments(chapterId: number) {

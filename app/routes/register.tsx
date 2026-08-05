@@ -4,6 +4,7 @@ import { createUserSession, getCurrentUser, register } from "../auth.server";
 import { findUserByUsername } from "../database.server";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { assertSameOrigin, enforceRateLimit } from "../security.server";
 
 export function meta() {
   return [{ title: "Регистрация — Phantom Freedom" }];
@@ -15,6 +16,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  assertSameOrigin(request);
+  enforceRateLimit(request, "register", 5, 60 * 60);
   const form = await request.formData();
   const username = String(form.get("username") ?? "").trim();
   const password = String(form.get("password") ?? "");
