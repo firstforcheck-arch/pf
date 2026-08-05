@@ -257,6 +257,12 @@ database.exec(`
   CREATE INDEX IF NOT EXISTS work_tags_tag_idx ON work_tags(tag_id, work_id);
 `);
 try {
+  database.exec("ALTER TABLE work_tags ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
+}
+database.exec("UPDATE work_tags SET sort_order = rowid WHERE sort_order = 0");
+try {
   database.exec("ALTER TABLE tags ADD COLUMN name_key TEXT");
 } catch (error) {
   if (!(error instanceof Error) || !error.message.includes("duplicate column name")) throw error;
@@ -283,7 +289,7 @@ for (const tag of storedTags) {
   const nameKey = normalizeTagName(tag.name);
   const existingId = tagIdByKey.get(nameKey);
   if (existingId) {
-    database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id) SELECT work_id, ? FROM work_tags WHERE tag_id = ?").run(existingId, tag.id);
+    database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id, sort_order) SELECT work_id, ?, sort_order FROM work_tags WHERE tag_id = ?").run(existingId, tag.id);
     database.prepare("DELETE FROM tags WHERE id = ?").run(tag.id);
   } else {
     tagIdByKey.set(nameKey, tag.id);
@@ -418,7 +424,7 @@ export function findUserById(id: number) {
     .get(id) as PublicUser | undefined;
 }
 
-export function getUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "") {
+export function getUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "", limit = 10, offset = 0) {
   const usernameFilter = `%${username.trim()}%`;
   const emailFilter = `%${email.trim()}%`;
   const accountPlusFilter = accessLevel === "account-plus" ? 1 : accessLevel === "reader" ? 0 : null;
@@ -431,12 +437,19 @@ export function getUsersForAdmin(adminId: number, username = "", email = "", acc
       AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)
       AND (? IS NULL OR account_plus = ?)
     ORDER BY username COLLATE NOCASE, id
-  `).all(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter) as unknown as PublicUser[];
+    LIMIT ? OFFSET ?
+  `).all(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter, limit, offset) as unknown as PublicUser[];
 }
 
-export function countUsersForAdmin(adminId: number) {
-  return (database.prepare("SELECT COUNT(*) AS count FROM users WHERE id <> ?")
-    .get(adminId) as { count: number }).count;
+export function countUsersForAdmin(adminId: number, username = "", email = "", accessLevel = "") {
+  const usernameFilter = `%${username.trim()}%`;
+  const emailFilter = `%${email.trim()}%`;
+  const accountPlusFilter = accessLevel === "account-plus" ? 1 : accessLevel === "reader" ? 0 : null;
+  return (database.prepare(`SELECT COUNT(*) AS count FROM users WHERE id <> ?
+    AND (? = '%%' OR username LIKE ? COLLATE NOCASE)
+    AND (? = '%%' OR COALESCE(email, '') LIKE ? COLLATE NOCASE)
+    AND (? IS NULL OR account_plus = ?)`)
+    .get(adminId, usernameFilter, usernameFilter, emailFilter, emailFilter, accountPlusFilter, accountPlusFilter) as { count: number }).count;
 }
 
 export function touchUser(id: number) {
@@ -484,8 +497,14 @@ export function createComment(chapterId: number, userId: number, content: string
     .run(chapterId, userId, content);
 }
 
-export function deleteComment(commentId: number, chapterId: number) {
-  database.prepare("DELETE FROM comments WHERE id = ? AND chapter_id = ?").run(commentId, chapterId);
+export function updateComment(commentId: number, chapterId: number, userId: number, content: string) {
+  return database.prepare("UPDATE comments SET content = ? WHERE id = ? AND chapter_id = ? AND user_id = ?")
+    .run(content, commentId, chapterId, userId).changes > 0;
+}
+
+export function deleteComment(commentId: number, chapterId: number, userId: number, canModerate = false) {
+  return database.prepare("DELETE FROM comments WHERE id = ? AND chapter_id = ? AND (? = 1 OR user_id = ?)")
+    .run(commentId, chapterId, canModerate ? 1 : 0, userId).changes > 0;
 }
 
 export function isFollowingWork(userId: number, workId: number) {
@@ -711,7 +730,7 @@ export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardR
       (SELECT COUNT(*) FROM work_tags AS tag_usage WHERE tag_usage.tag_id = tags.id) AS workCount
     FROM work_tags JOIN tags ON tags.id = work_tags.tag_id
     WHERE work_tags.work_id IN (${placeholders})
-    ORDER BY tags.name COLLATE NOCASE
+    ORDER BY work_tags.work_id, work_tags.sort_order, work_tags.created_at, tags.name COLLATE NOCASE
   `).all(...ids) as (TagRecord & { workId: number })[];
   const likedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_likes WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
   const followedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_followers WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
@@ -755,6 +774,62 @@ export function getAllTags() {
     FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
     GROUP BY tags.id ORDER BY tags.name COLLATE NOCASE
   `).all() as any[]).map(mapTag);
+}
+
+function getFilteredTagsForAdmin(nameQuery = "", descriptionQuery = "", sort: "popular" | "unpopular" | "newest" = "popular") {
+  const rows = database.prepare(`
+    SELECT tags.id, tags.slug, tags.name, tags.description,
+      tags.name_ru AS nameRu, tags.name_uk AS nameUk,
+      tags.description_ru AS descriptionRu, tags.description_uk AS descriptionUk,
+      tags.source_language AS sourceLanguage, tags.created_at AS createdAt,
+      COUNT(work_tags.work_id) AS workCount
+    FROM tags LEFT JOIN work_tags ON work_tags.tag_id = tags.id
+    GROUP BY tags.id
+  `).all() as Array<Record<string, unknown> & { createdAt: string }>;
+  const normalizedName = normalizeTagName(nameQuery);
+  const normalizedDescription = normalizeTagName(descriptionQuery);
+  return rows
+    .filter((row) => !normalizedName || normalizeTagName(String(row.nameRu ?? row.name)).includes(normalizedName) || normalizeTagName(String(row.nameUk ?? row.name)).includes(normalizedName))
+    .filter((row) => !normalizedDescription || normalizeTagName(String(row.descriptionRu ?? row.description ?? "")).includes(normalizedDescription) || normalizeTagName(String(row.descriptionUk ?? row.description ?? "")).includes(normalizedDescription))
+    .sort((left, right) => {
+      if (sort === "newest") return right.createdAt.localeCompare(left.createdAt) || Number(right.id) - Number(left.id);
+      const difference = Number(left.workCount) - Number(right.workCount);
+      if (difference) return sort === "unpopular" ? difference : -difference;
+      return String(left.nameRu ?? left.name).localeCompare(String(right.nameRu ?? right.name), "ru");
+    });
+}
+
+export function getTagsForAdmin(limit: number, offset: number, nameQuery = "", descriptionQuery = "", sort: "popular" | "unpopular" | "newest" = "popular") {
+  return getFilteredTagsForAdmin(nameQuery, descriptionQuery, sort).slice(offset, offset + limit).map(mapTag);
+}
+
+export function countTags(nameQuery = "", descriptionQuery = "") {
+  return getFilteredTagsForAdmin(nameQuery, descriptionQuery).length;
+}
+
+export function updateTagManually(id: number, input: { nameRu: string; nameUk: string; descriptionRu: string; descriptionUk: string }) {
+  const nameRu = input.nameRu.trim().replace(/\s+/g, " ");
+  const nameUk = input.nameUk.trim().replace(/\s+/g, " ");
+  const descriptionRu = input.descriptionRu.trim();
+  const descriptionUk = input.descriptionUk.trim();
+  if (!nameRu || !nameUk) return { error: "Укажите название метки на обоих языках." } as const;
+  if (nameRu.length > 60 || nameUk.length > 60) return { error: "Название метки не должно превышать 60 символов." } as const;
+  if (descriptionRu.length > 500 || descriptionUk.length > 500) return { error: "Описание метки не должно превышать 500 символов." } as const;
+  const nameRuKey = normalizeTagName(nameRu);
+  const nameUkKey = normalizeTagName(nameUk);
+  const duplicate = database.prepare(`SELECT id FROM tags WHERE id <> ? AND
+    (name_ru_key IN (?, ?) OR name_uk_key IN (?, ?)) LIMIT 1`)
+    .get(id, nameRuKey, nameUkKey, nameRuKey, nameUkKey);
+  if (duplicate) return { error: "Метка с таким названием уже существует." } as const;
+  const result = database.prepare(`UPDATE tags SET name = ?, name_key = ?, description = ?,
+    name_ru = ?, name_uk = ?, description_ru = ?, description_uk = ?,
+    name_ru_key = ?, name_uk_key = ?, source_language = 'ru', translation_complete = 1 WHERE id = ?`)
+    .run(nameRu, nameRuKey, descriptionRu, nameRu, nameUk, descriptionRu, descriptionUk, nameRuKey, nameUkKey, id);
+  return result.changes ? { ok: true } as const : { error: "Метка не найдена." } as const;
+}
+
+export function deleteTag(id: number) {
+  return database.prepare("DELETE FROM tags WHERE id = ?").run(id).changes > 0;
 }
 
 export function searchTags(query: string, limit = 20, excludedIds: number[] = []) {
@@ -834,7 +909,7 @@ export function getWorkTags(workId: number) {
       tags.source_language AS sourceLanguage,
       (SELECT COUNT(*) FROM work_tags WHERE work_tags.tag_id = tags.id) AS workCount
     FROM tags JOIN work_tags ON work_tags.tag_id = tags.id
-    WHERE work_tags.work_id = ? ORDER BY tags.name COLLATE NOCASE
+    WHERE work_tags.work_id = ? ORDER BY work_tags.sort_order, work_tags.created_at, tags.name COLLATE NOCASE
   `).all(workId) as any[]).map(mapTag);
 }
 
@@ -893,8 +968,8 @@ export function setWorkTags(workId: number, tagIds: number[]) {
   database.exec("BEGIN IMMEDIATE");
   try {
     database.prepare("DELETE FROM work_tags WHERE work_id = ?").run(workId);
-    const insert = database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id) SELECT ?, id FROM tags WHERE id = ?");
-    for (const tagId of [...new Set(tagIds)]) insert.run(workId, tagId);
+    const insert = database.prepare("INSERT OR IGNORE INTO work_tags (work_id, tag_id, sort_order) SELECT ?, id, ? FROM tags WHERE id = ?");
+    [...new Set(tagIds)].forEach((tagId, index) => insert.run(workId, index + 1, tagId));
     database.exec("COMMIT");
   } catch (error) {
     database.exec("ROLLBACK");

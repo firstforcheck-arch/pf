@@ -4,6 +4,9 @@ import { Header } from "../components/header";
 import { requireAdmin } from "../auth.server";
 import { countUsersForAdmin, getUsersForAdmin } from "../database.server";
 import { useLocalization } from "../localization";
+import { AdminTabs } from "../components/admin-tabs";
+
+const PAGE_SIZE = 10;
 
 export function meta() {
   return [{ title: "Пользователи — Phantom Freedom" }];
@@ -16,16 +19,46 @@ export async function loader({ request }: Route.LoaderArgs) {
   const email = url.searchParams.get("email")?.trim() ?? "";
   const requestedRole = url.searchParams.get("role") ?? "";
   const role = requestedRole === "reader" || requestedRole === "account-plus" ? requestedRole : "";
+  const requestedPage = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+  const totalUsers = countUsersForAdmin(admin.id, username, email, role);
+  const totalPages = Math.max(1, Math.ceil(totalUsers / PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
   return {
-    users: getUsersForAdmin(admin.id, username, email, role),
-    totalUsers: countUsersForAdmin(admin.id),
+    users: getUsersForAdmin(admin.id, username, email, role, PAGE_SIZE, (currentPage - 1) * PAGE_SIZE),
+    totalUsers,
     filters: { username, email, role },
+    pagination: { currentPage, totalPages },
   };
+}
+
+function visiblePages(currentPage: number, totalPages: number) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  const pages = [...new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])].filter((page) => page > 0 && page <= totalPages).sort((a, b) => a - b);
+  const result: Array<number | string> = [];
+  pages.forEach((page, index) => {
+    if (index && page - pages[index - 1] > 1) result.push(`ellipsis-${page}`);
+    result.push(page);
+  });
+  return result;
 }
 
 export default function AdminUsers({ loaderData }: Route.ComponentProps) {
   const { text } = useLocalization();
   const hasFilters = Boolean(loaderData.filters.username || loaderData.filters.email || loaderData.filters.role);
+  const pageHref = (page: number) => {
+    const params = new URLSearchParams();
+    if (loaderData.filters.username) params.set("username", loaderData.filters.username);
+    if (loaderData.filters.email) params.set("email", loaderData.filters.email);
+    if (loaderData.filters.role) params.set("role", loaderData.filters.role);
+    if (page > 1) params.set("page", String(page));
+    const query = params.toString();
+    return query ? `/admin/users?${query}` : "/admin/users";
+  };
+  const pagination = loaderData.pagination.totalPages > 1 && <nav className="catalog-pagination admin-users-pagination" aria-label={text("Навигация по страницам", "Навігація сторінками")}>
+    <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === 1 ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage - 1)} aria-disabled={loaderData.pagination.currentPage === 1} tabIndex={loaderData.pagination.currentPage === 1 ? -1 : undefined}><span aria-hidden="true">←</span><b>{text("Назад", "Назад")}</b></Link>
+    <div className="catalog-pagination__pages">{visiblePages(loaderData.pagination.currentPage, loaderData.pagination.totalPages).map((item) => typeof item === "number" ? <Link className={item === loaderData.pagination.currentPage ? "is-current" : ""} to={pageHref(item)} aria-current={item === loaderData.pagination.currentPage ? "page" : undefined} key={item}>{item}</Link> : <span aria-hidden="true" key={item}>•••</span>)}</div>
+    <Link className={`catalog-pagination__edge ${loaderData.pagination.currentPage === loaderData.pagination.totalPages ? "is-disabled" : ""}`} to={pageHref(loaderData.pagination.currentPage + 1)} aria-disabled={loaderData.pagination.currentPage === loaderData.pagination.totalPages} tabIndex={loaderData.pagination.currentPage === loaderData.pagination.totalPages ? -1 : undefined}><b>{text("Вперёд", "Вперед")}</b><span aria-hidden="true">→</span></Link>
+  </nav>;
 
   return (
     <main className="admin-users-page">
@@ -41,6 +74,8 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
           </div>
           <h1>{text("Пользователи", "Користувачі")}</h1>
         </div>
+
+        <AdminTabs />
 
         <Form className="admin-users-filter" method="get">
           <label>
@@ -65,6 +100,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
           </div>
         </Form>
 
+        {pagination}
         <div className="admin-users-list">
           {loaderData.users.length === 0 ? (
             <p className="admin-users-empty">{text("Пользователи не найдены.", "Користувачів не знайдено.")}</p>
@@ -82,6 +118,7 @@ export default function AdminUsers({ loaderData }: Route.ComponentProps) {
             </Link>
           ))}
         </div>
+        {pagination}
       </section>
     </main>
   );

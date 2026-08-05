@@ -6,13 +6,14 @@ import { enrichWorkCards, getPublicUserByUsername, getWorksByOwner, setUserAccou
 import { Header } from "../components/header";
 import { WorkGrid } from "./home";
 import { useLocalization } from "../localization";
+import { isUserOnline } from "../realtime.server";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const profile = getPublicUserByUsername(params.username);
   if (!profile) throw new Response("Пользователь не найден", { status: 404 });
   const viewer = await getCurrentUser(request);
   const privateUser = viewer?.role === "admin" ? findUserById(profile.id) : null;
-  return { profile, privateUser, viewer, isAdmin: viewer?.role === "admin", works: enrichWorkCards(getWorksByOwner(profile.id, viewer?.role === "admin"), viewer?.id) };
+  return { profile, privateUser, viewer, isOnline: viewer?.id === profile.id || isUserOnline(profile.id), isAdmin: viewer?.role === "admin", works: enrichWorkCards(getWorksByOwner(profile.id, viewer?.role === "admin"), viewer?.id) };
 }
 export async function action({ request, params }: Route.ActionArgs) {
   const admin = await getCurrentUser(request);
@@ -34,6 +35,20 @@ export default function PublicProfile({ loaderData, actionData }: Route.Componen
   const { text, language } = useLocalization();
   const { profile } = loaderData;
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(loaderData.isOnline);
+  const [lastSeen, setLastSeen] = useState(profile.lastSeen);
+  useEffect(() => {
+    setIsOnline(loaderData.isOnline);
+    setLastSeen(profile.lastSeen);
+    const events = new EventSource(`/events?presenceUserId=${profile.id}`);
+    events.onmessage = (event) => {
+      const presence = JSON.parse(event.data) as { type?: string; online?: boolean; lastSeen?: string };
+      if (presence.type !== "presence") return;
+      setIsOnline(Boolean(presence.online));
+      if (presence.lastSeen) setLastSeen(presence.lastSeen);
+    };
+    return () => events.close();
+  }, [profile.id, profile.lastSeen, loaderData.isOnline]);
   useEffect(() => {
     if (!avatarOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -47,7 +62,7 @@ export default function PublicProfile({ loaderData, actionData }: Route.Componen
       <img src={profile.avatarUrl} alt="" />
       <span className="public-profile-card__avatar-eye" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.75"/></svg></span>
     </button> : <span>{profile.username[0].toUpperCase()}</span>}
-    <div><p className="eyebrow">{profile.accountPlus === 1 || profile.role === "admin" ? "Аккаунт+" : text("Читатель", "Читач")}</p><h1>{profile.username}</h1><small>{text("Последний онлайн", "Останній онлайн")}: {new Date(`${profile.lastSeen}Z`).toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")}</small>
+    <div><p className="eyebrow">{profile.accountPlus === 1 || profile.role === "admin" ? "Аккаунт+" : text("Читатель", "Читач")}</p><h1>{profile.username}</h1><small className={isOnline ? "profile-presence profile-presence--online" : "profile-presence"}>{isOnline ? <><span className="profile-presence__dot" aria-hidden="true" />{text("Онлайн", "Онлайн")}</> : <>{text("Последний онлайн", "Останній онлайн")}: {new Date(lastSeen.endsWith("Z") ? lastSeen : `${lastSeen}Z`).toLocaleString(language === "uk" ? "uk-UA" : "ru-RU")}</>}</small>
       {loaderData.viewer?.id !== profile.id && <Link className="profile-message-button" to={loaderData.viewer ? `/messages/${profile.username}` : "/login"}>{text("Написать сообщение", "Написати повідомлення")}</Link>}
     </div>
   </div>

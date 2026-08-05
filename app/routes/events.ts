@@ -1,11 +1,14 @@
 import type { Route } from "./+types/events";
 import { getCurrentUser } from "../auth.server";
-import { subscribeToUser } from "../realtime.server";
+import { subscribeToPresence, subscribeToUser } from "../realtime.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
+  const url = new URL(request.url);
+  const requestedPresenceUserId = Number(url.searchParams.get("presenceUserId"));
+  const presenceUserId = Number.isInteger(requestedPresenceUserId) && requestedPresenceUserId > 0 ? requestedPresenceUserId : undefined;
   const user = await getCurrentUser(request);
-  if (!user) return new Response("Unauthorized", { status: 401 });
-  const requestedPeerId = Number(new URL(request.url).searchParams.get("peerId"));
+  if (!user && !presenceUserId) return new Response("Unauthorized", { status: 401 });
+  const requestedPeerId = Number(url.searchParams.get("peerId"));
   const peerId = Number.isInteger(requestedPeerId) && requestedPeerId > 0 ? requestedPeerId : undefined;
 
   const encoder = new TextEncoder();
@@ -14,7 +17,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     start(controller) {
       const send = (event: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
       send({ type: "connected" });
-      cleanup = subscribeToUser(user.id, send, peerId);
+      cleanup = presenceUserId
+        ? subscribeToPresence(presenceUserId, send)
+        : subscribeToUser(user!.id, send, peerId);
       const heartbeat = setInterval(() => controller.enqueue(encoder.encode(": heartbeat\n\n")), 20_000);
       const close = () => {
         clearInterval(heartbeat);

@@ -20,6 +20,7 @@ export default [
   route("notifications", "routes/notifications.tsx"),
   route("events", "routes/events.ts"),
   route("admin/users", "routes/admin-users.tsx"),
+  route("admin/tags", "routes/admin-tags.tsx"),
   route("editor", "routes/editor.tsx"),
   route("editor/works/:workId", "routes/admin-chapters.tsx"),
   route("editor/works/:workId/tags/search", "routes/tag-search.ts"),

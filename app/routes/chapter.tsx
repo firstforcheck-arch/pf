@@ -3,7 +3,7 @@ import { data, Form, isRouteErrorResponse, Link, useRouteLoaderData, useSearchPa
 import { Header } from "../components/header";
 import { WorkActions } from "../components/work-actions";
 import { WorkUnavailable } from "../components/work-unavailable";
-import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug, getWorkEngagement } from "../database.server";
+import { canManageWork, createComment, deleteComment, getChapter, getChapterByPublicSlug, getChapterComments, getPublishedChapters, getWorkBySlug, getWorkEngagement, updateComment } from "../database.server";
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
@@ -40,8 +40,14 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!chapter) return data({ error: "Глава не найдена." }, { status: 404 });
   const form = await request.formData();
   if (form.get("intent") === "delete-comment") {
-    if (!canManageWork(user, book.id)) return data({ error: "Недостаточно прав." }, { status: 403 });
-    deleteComment(Number(form.get("commentId")), chapter.id);
+    if (!deleteComment(Number(form.get("commentId")), chapter.id, user.id, user.role === "admin")) return data({ error: "Недостаточно прав для удаления комментария." }, { status: 403 });
+    return { error: null };
+  }
+  if (form.get("intent") === "edit-comment") {
+    const content = String(form.get("content") ?? "").trim();
+    if (!content) return data({ error: "Комментарий не может быть пустым." }, { status: 400 });
+    if (content.length > 2000) return data({ error: "Комментарий не должен превышать 2000 символов." }, { status: 400 });
+    if (!updateComment(Number(form.get("commentId")), chapter.id, user.id, content)) return data({ error: "Можно редактировать только свой комментарий." }, { status: 403 });
     return { error: null };
   }
   if (!publishedChapter) return data({ error: "Глава не опубликована." }, { status: 400 });
@@ -60,8 +66,9 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 export default function ChapterPage({ loaderData, actionData }: Route.ComponentProps) {
   const { language, text } = useLocalization();
   const { chapter, chapters, comments, book, canManage, engagement } = loaderData;
-  const rootData = useRouteLoaderData<{ user: { username: string; avatarUrl: string | null; role: "admin" | "reader" } | null }>("root");
+  const rootData = useRouteLoaderData<{ user: { id: number; username: string; avatarUrl: string | null; role: "admin" | "reader" } | null }>("root");
   const [commentToDelete, setCommentToDelete] = useState<number | null>(null);
+  const [commentToEdit, setCommentToEdit] = useState<(typeof comments)[number] | null>(null);
   const [searchParams] = useSearchParams();
 
   if (!chapter) {
@@ -165,11 +172,14 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
                       hour12: false,
                       timeZone: "Europe/Kyiv",
                     })}</time>
-                    {canManage && (
+                    {(rootData?.user?.id === comment.user.id || rootData?.user?.role === "admin") && <div className="comment__actions">
+                      {rootData?.user?.id === comment.user.id && <button className="comment__edit" type="button" onClick={() => setCommentToEdit(comment)} aria-label={text("Редактировать комментарий", "Редагувати коментар")} title={text("Редактировать комментарий", "Редагувати коментар")}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.2-1 10.5-10.5-3.2-3.2L5 15.8 4 20ZM13.8 7l3.2 3.2" /></svg>
+                      </button>}
                       <button className="comment__delete" type="button" onClick={() => setCommentToDelete(comment.id)} aria-label={text("Удалить комментарий", "Видалити коментар")} title={text("Удалить комментарий", "Видалити коментар")}>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" /></svg>
                       </button>
-                    )}
+                    </div>}
                   </div>
                 </header>
                 <p>{comment.content}</p>
@@ -194,6 +204,21 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
                 <button type="submit">{text("Да", "Так")}</button>
               </Form>
             </div>
+          </section>
+        </div>
+      )}
+      {commentToEdit && (
+        <div className="confirm-modal comment-edit-modal" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCommentToEdit(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="edit-comment-title">
+            <p className="eyebrow">{text("Ваш комментарий", "Ваш коментар")}</p>
+            <h2 id="edit-comment-title">{text("Редактировать комментарий", "Редагувати коментар")}</h2>
+            <Form method="post" className="comment-edit-form" onSubmit={() => setCommentToEdit(null)}>
+              <input type="hidden" name="intent" value="edit-comment" />
+              <input type="hidden" name="commentId" value={commentToEdit.id} />
+              <label className="sr-only" htmlFor="edited-comment-content">{text("Текст комментария", "Текст коментаря")}</label>
+              <textarea id="edited-comment-content" name="content" rows={6} maxLength={2000} defaultValue={commentToEdit.content} required autoFocus />
+              <div className="confirm-modal__actions"><button type="button" onClick={() => setCommentToEdit(null)}>{text("Отмена", "Скасувати")}</button><button type="submit">{text("Сохранить", "Зберегти")}</button></div>
+            </Form>
           </section>
         </div>
       )}

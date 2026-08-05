@@ -189,7 +189,7 @@ function ProfileMenu({
           )}
           {user?.role === "admin" && (
             <Link to="/admin/users" onClick={() => setOpen(false)}>
-              <span>{text("Пользователи", "Користувачі")}</span>
+              <span>{text("Управление", "Керування")}</span>
               <b aria-hidden="true">→</b>
             </Link>
           )}

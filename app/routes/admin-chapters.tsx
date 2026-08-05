@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Form, Link, redirect, useFetcher } from "react-router";
+import { Form, Link, redirect, useFetcher, useNavigation } from "react-router";
 import type { Route } from "./+types/admin-chapters";
 import { requireWorkManager } from "../auth.server";
 import {
@@ -117,11 +117,22 @@ export async function action({ request, params }: Route.ActionArgs) {
 export default function AdminChapters({ loaderData, actionData }: Route.ComponentProps) {
   const { language, text } = useLocalization();
   const reorderFetcher = useFetcher();
+  const navigation = useNavigation();
   const [chapters, setChapters] = useState(loaderData.chapters);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [publicationDialogOpen, setPublicationDialogOpen] = useState(false);
+  const [headerDirty, setHeaderDirty] = useState(false);
+  const [notesDirty, setNotesDirty] = useState(false);
+  const submittedIntentRef = useRef<string | null>(null);
 
   useEffect(() => setChapters(loaderData.chapters), [loaderData.chapters]);
+  useEffect(() => {
+    if (navigation.state === "submitting") submittedIntentRef.current = String(navigation.formData?.get("intent") ?? "");
+    if (navigation.state !== "idle" || !actionData?.ok) return;
+    if (submittedIntentRef.current === "save-book") setHeaderDirty(false);
+    if (submittedIntentRef.current === "save-notes") setNotesDirty(false);
+    submittedIntentRef.current = null;
+  }, [navigation.state, navigation.formData, actionData]);
 
   function moveChapter(targetId: number) {
     if (draggedId === null || draggedId === targetId) return;
@@ -145,16 +156,17 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
         <div className="admin-section">
           <p className="eyebrow">{text("Основная информация", "Основна інформація")}</p>
           <h1>{text("Шапка работы", "Шапка роботи")}</h1>
-          <Form method="post" encType="multipart/form-data" className="editor-form book-header-form">
+          <Form method="post" encType="multipart/form-data" className="editor-form book-header-form" onChange={() => setHeaderDirty(true)}>
             <input type="hidden" name="intent" value="save-book" />
             <label>{text("Название", "Назва")}<input name="title" defaultValue={loaderData.book.title} required /></label>
             <label>{text("Описание", "Опис")}<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
-            <TagEditor workId={loaderData.book.id} initialTags={loaderData.selectedTags} />
+            <TagEditor workId={loaderData.book.id} initialTags={loaderData.selectedTags} onDirty={() => setHeaderDirty(true)} />
             <CoverEditor
               coverUrl={loaderData.book.coverUrl}
               initialX={loaderData.book.coverPositionX}
               initialY={loaderData.book.coverPositionY}
               initialZoom={loaderData.book.coverZoom}
+              onDirty={() => setHeaderDirty(true)}
             />
             {actionData?.error && <p className="form-error">{text(
               actionData.error,
@@ -163,17 +175,17 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
                   : actionData.error === "Масштаб обложки должен быть от 0.25 до 3." ? "Масштаб обкладинки має бути від 0.25 до 3."
                   : "Обкладинка має бути у форматі JPG, PNG або WebP.",
             )}</p>}
-            <button type="submit">{text("Сохранить шапку", "Зберегти шапку")}</button>
+            <button className={headerDirty ? "save-button--dirty" : undefined} type="submit">{text("Сохранить шапку", "Зберегти шапку")}</button>
           </Form>
         </div>
 
         <div className="admin-section">
           <p className="eyebrow">{text("Дополнительная информация", "Додаткова інформація")}</p>
           <h1>{text("Примечания", "Примітки")}</h1>
-          <Form method="post" className="editor-form book-header-form">
+          <Form method="post" className="editor-form book-header-form" onChange={() => setNotesDirty(true)}>
             <input type="hidden" name="intent" value="save-notes" />
             <label>{text("Текст примечания", "Текст примітки")}<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} /></label>
-            <button type="submit">{text("Сохранить примечания", "Зберегти примітки")}</button>
+            <button className={notesDirty ? "save-button--dirty" : undefined} type="submit">{text("Сохранить примечания", "Зберегти примітки")}</button>
           </Form>
         </div>
 
@@ -263,7 +275,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
 const MIN_COVER_ZOOM = 0.25;
 const MAX_COVER_ZOOM = 3;
 
-function TagEditor({ workId, initialTags }: { workId: number; initialTags: import("../database.server").TagRecord[] }) {
+function TagEditor({ workId, initialTags, onDirty }: { workId: number; initialTags: import("../database.server").TagRecord[]; onDirty: () => void }) {
   const { text, language } = useLocalization();
   const searchFetcher = useFetcher<{ tags: import("../database.server").TagRecord[] }>();
   const createFetcher = useFetcher<{ ok: boolean; createdTag?: import("../database.server").TagRecord; tagError?: string }>();
@@ -273,7 +285,27 @@ function TagEditor({ workId, initialTags }: { workId: number; initialTags: impor
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [draggedTagId, setDraggedTagId] = useState<number | null>(null);
+  const draggedTagRef = useRef<number | null>(null);
   const selectedIdKey = selectedTags.map((tag) => tag.id).sort((a, b) => a - b).join(",");
+
+  function moveTag(targetId: number) {
+    const sourceId = draggedTagRef.current;
+    if (sourceId === null || sourceId === targetId) return;
+    const next = [...selectedTags];
+    const from = next.findIndex((tag) => tag.id === sourceId);
+    const to = next.findIndex((tag) => tag.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setSelectedTags(next);
+    onDirty();
+  }
+
+  function finishTagDrag() {
+    draggedTagRef.current = null;
+    setDraggedTagId(null);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -287,6 +319,7 @@ function TagEditor({ workId, initialTags }: { workId: number; initialTags: impor
     const tag = createFetcher.data?.createdTag;
     if (!tag) return;
     setSelectedTags((tags) => tags.some((item) => item.id === tag.id) ? tags : [...tags, tag]);
+    onDirty();
     setName("");
     setDescription("");
     setCreating(false);
@@ -308,17 +341,19 @@ function TagEditor({ workId, initialTags }: { workId: number; initialTags: impor
     <legend>{text("Метки", "Мітки")}</legend>
     {selectedTags.map((tag) => <input key={tag.id} type="hidden" name="tagId" value={tag.id} />)}
     <div className="tag-editor__selected">
-      {selectedTags.length ? selectedTags.map((tag) => <span className="tag-chip tag-chip--editable" key={tag.id}>
+      {selectedTags.length ? selectedTags.map((tag) => <span className={`tag-chip tag-chip--editable ${draggedTagId === tag.id ? "tag-chip--dragging" : ""}`} data-tag-id={tag.id} key={tag.id} onDragOver={(event) => event.preventDefault()} onDrop={() => moveTag(tag.id)}>
+        <button className="tag-chip__drag" type="button" aria-label={`${text("Переместить метку", "Перемістити мітку")} ${localizedTagName(tag, language)}`} onPointerDown={(event) => { event.preventDefault(); draggedTagRef.current = tag.id; setDraggedTagId(tag.id); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (draggedTagRef.current === null) return; const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-tag-id]"); if (target?.dataset.tagId) moveTag(Number(target.dataset.tagId)); }} onPointerUp={finishTagDrag} onPointerCancel={finishTagDrag} onLostPointerCapture={finishTagDrag}><svg viewBox="0 0 10 16" aria-hidden="true"><circle cx="3" cy="3" r="1.4"/><circle cx="7" cy="3" r="1.4"/><circle cx="3" cy="8" r="1.4"/><circle cx="7" cy="8" r="1.4"/><circle cx="3" cy="13" r="1.4"/><circle cx="7" cy="13" r="1.4"/></svg></button>
         <Link to={`/tags/${tag.slug}`}>{localizedTagName(tag, language)}</Link>
-        <button type="button" aria-label={`${text("Удалить метку", "Видалити мітку")} ${localizedTagName(tag, language)}`} onClick={() => setSelectedTags((tags) => tags.filter((item) => item.id !== tag.id))}>×</button>
+        <button className="tag-chip__remove" type="button" aria-label={`${text("Удалить метку", "Видалити мітку")} ${localizedTagName(tag, language)}`} onClick={() => { setSelectedTags((tags) => tags.filter((item) => item.id !== tag.id)); onDirty(); }}>×</button>
       </span>) : <small>{text("Метки пока не выбраны.", "Мітки поки не вибрані.")}</small>}
     </div>
+    {selectedTags.length > 1 && <small className="tag-editor__order-hint">{text("Перетаскивайте метки за ручку, чтобы изменить порядок отображения.", "Перетягуйте мітки за ручку, щоб змінити порядок відображення.")}</small>}
     <div className="tag-combobox">
       <button className="tag-editor__toggle" type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{open ? text("Закрыть", "Закрити") : text("Добавить метку", "Додати мітку")}</button>
       {open && <div className="tag-editor__panel">
         <label className="tag-editor__search"><span>{text("Поиск метки", "Пошук мітки")}</span><input autoFocus value={query} placeholder={text("Начните вводить название…", "Почніть вводити назву…")} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="tag-editor__list" aria-busy={searchFetcher.state !== "idle"}>
-          {availableResults.map((tag) => <button type="button" key={tag.id} onClick={() => setSelectedTags((tags) => [...tags, tag])}>
+          {availableResults.map((tag) => <button type="button" key={tag.id} onClick={() => { setSelectedTags((tags) => [...tags, tag]); onDirty(); }}>
             <span><strong>{localizedTagName(tag, language)}</strong><small>{localizedTagDescription(tag, language) || text("Без описания", "Без опису")}</small></span><b>{tag.workCount}</b>
           </button>)}
           {searchFetcher.state === "idle" && !availableResults.length && <p>{text("Других подходящих меток не найдено.", "Інших відповідних міток не знайдено.")}</p>}
@@ -369,11 +404,13 @@ function CoverEditor({
   initialX,
   initialY,
   initialZoom,
+  onDirty,
 }: {
   coverUrl: string | null;
   initialX: number;
   initialY: number;
   initialZoom: number;
+  onDirty: () => void;
 }) {
   const { text } = useLocalization();
   const [previewUrl, setPreviewUrl] = useState(coverUrl);
@@ -501,6 +538,7 @@ function CoverEditor({
                 setPosition(draftPosition);
                 setZoom(parsedDraftZoom);
                 setEditorOpen(false);
+                if (draftPosition.x !== position.x || draftPosition.y !== position.y || parsedDraftZoom !== zoom) onDirty();
               }}>{text("Применить", "Застосувати")}</button>
             </div>
           </section>
