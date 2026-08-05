@@ -8,6 +8,7 @@ import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
 import { AnalyticsTracker } from "../components/analytics-tracker";
+import { formatInlineText } from "../components/formatted-text";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
@@ -116,7 +117,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
           )}
         </div>
         <div className="reader__text">
-          {chapter.content.split(/\r?\n\r?\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+          {chapter.content.split(/\r?\n\r?\n/).filter(Boolean).map((paragraph, index) => <p key={index}>{formatInlineText(paragraph)}</p>)}
         </div>
       </article>
 
