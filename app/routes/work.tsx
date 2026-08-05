@@ -7,6 +7,7 @@ import { getPublishedChapters, getWorkBySlug, getWorkTags, isFollowingWork, setW
 import { getCurrentUser } from "../auth.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
+import { AnalyticsTracker } from "../components/analytics-tracker";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: loaderData?.book.title ?? "Работа не найдена" }, { name: "description", content: loaderData?.book.description ?? "" }];
@@ -48,6 +49,7 @@ export default function Work({ loaderData }: Route.ComponentProps) {
 
   return (
     <>
+      <AnalyticsTracker workId={book.id} />
       <main>
         <section className={`hero ${book.coverUrl ? "hero--with-cover" : ""} ${book.description.trim() ? "" : "hero--without-description"}`}>
           <div className="hero__grid" /><div className="hero__glow" /><Header variant="overlay" />

@@ -352,6 +352,32 @@ database.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (work_id, user_id)
   );
+  CREATE TABLE IF NOT EXISTS work_views (
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    visitor_key TEXT NOT NULL,
+    viewed_on TEXT NOT NULL DEFAULT (date('now')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_id, visitor_key, viewed_on)
+  );
+  CREATE INDEX IF NOT EXISTS work_views_date_idx ON work_views(work_id, viewed_on);
+  CREATE TABLE IF NOT EXISTS chapter_views (
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    visitor_key TEXT NOT NULL,
+    viewed_on TEXT NOT NULL DEFAULT (date('now')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (chapter_id, visitor_key, viewed_on)
+  );
+  CREATE INDEX IF NOT EXISTS chapter_views_work_date_idx ON chapter_views(work_id, viewed_on, chapter_id);
+  CREATE TABLE IF NOT EXISTS chapter_progress (
+    chapter_id INTEGER NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
+    work_id INTEGER NOT NULL REFERENCES works(id) ON DELETE CASCADE,
+    visitor_key TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK(threshold IN (25, 50, 75, 100)),
+    reached_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (chapter_id, visitor_key, threshold)
+  );
+  CREATE INDEX IF NOT EXISTS chapter_progress_chapter_idx ON chapter_progress(chapter_id, threshold);
   CREATE TABLE IF NOT EXISTS notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -538,6 +564,115 @@ export function getWorkEngagement(workId: number, userId?: number) {
     liked: userId ? isLikingWork(userId, workId) : false,
     following: userId ? isFollowingWork(userId, workId) : false,
   };
+}
+
+export type AnalyticsTimeframe = "day" | "week" | "month";
+
+export function recordWorkView(workId: number, visitorKey: string) {
+  database.prepare("INSERT OR IGNORE INTO work_views (work_id, visitor_key) SELECT id, ? FROM works WHERE id = ? AND published = 1")
+    .run(visitorKey, workId);
+}
+
+export function recordChapterView(chapterId: number, workId: number, visitorKey: string) {
+  database.prepare(`INSERT OR IGNORE INTO chapter_views (chapter_id, work_id, visitor_key)
+    SELECT chapters.id, chapters.work_id, ? FROM chapters JOIN works ON works.id = chapters.work_id
+    WHERE chapters.id = ? AND chapters.work_id = ? AND chapters.published = 1 AND works.published = 1`)
+    .run(visitorKey, chapterId, workId);
+}
+
+export function recordChapterProgress(chapterId: number, workId: number, visitorKey: string, threshold: number) {
+  if (![25, 50, 75, 100].includes(threshold)) return;
+  database.prepare(`INSERT OR IGNORE INTO chapter_progress (chapter_id, work_id, visitor_key, threshold)
+    SELECT chapters.id, chapters.work_id, ?, ? FROM chapters JOIN works ON works.id = chapters.work_id
+    WHERE chapters.id = ? AND chapters.work_id = ? AND chapters.published = 1 AND works.published = 1`)
+    .run(visitorKey, threshold, chapterId, workId);
+}
+
+function analyticsPeriodStart(timeframe: AnalyticsTimeframe) {
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  if (timeframe === "day") now.setUTCDate(now.getUTCDate() - 13);
+  if (timeframe === "week") {
+    const day = now.getUTCDay() || 7;
+    now.setUTCDate(now.getUTCDate() - day + 1 - 11 * 7);
+  }
+  if (timeframe === "month") now.setUTCMonth(now.getUTCMonth() - 11, 1);
+  return now.toISOString().slice(0, 10);
+}
+
+function analyticsBucket(date: string, timeframe: AnalyticsTimeframe) {
+  const value = new Date(`${date}T00:00:00Z`);
+  if (timeframe === "day") return date;
+  if (timeframe === "month") return date.slice(0, 7);
+  const day = value.getUTCDay() || 7;
+  value.setUTCDate(value.getUTCDate() - day + 1);
+  return value.toISOString().slice(0, 10);
+}
+
+export function analyticsBuckets(timeframe: AnalyticsTimeframe) {
+  const start = new Date(`${analyticsPeriodStart(timeframe)}T00:00:00Z`);
+  return Array.from({ length: timeframe === "day" ? 14 : 12 }, (_, index) => {
+    const date = new Date(start);
+    if (timeframe === "day") date.setUTCDate(start.getUTCDate() + index);
+    if (timeframe === "week") date.setUTCDate(start.getUTCDate() + index * 7);
+    if (timeframe === "month") date.setUTCMonth(start.getUTCMonth() + index);
+    return timeframe === "month" ? date.toISOString().slice(0, 7) : date.toISOString().slice(0, 10);
+  });
+}
+
+export function getAnalyticsWorks(user: PublicUser) {
+  const works = user.role === "admin" ? getAllWorks() : getWorksByOwner(user.id, true);
+  const totalViews = database.prepare("SELECT COUNT(DISTINCT visitor_key) AS count FROM work_views WHERE work_id = ?");
+  const followers = database.prepare("SELECT COUNT(*) AS count FROM work_followers WHERE work_id = ?");
+  const likes = database.prepare("SELECT COUNT(*) AS count FROM work_likes WHERE work_id = ?");
+  return works.map((work) => ({
+    ...work,
+    viewCount: Number((totalViews.get(work.id) as { count: number }).count),
+    followerCount: Number((followers.get(work.id) as { count: number }).count),
+    likeCount: Number((likes.get(work.id) as { count: number }).count),
+  }));
+}
+
+export function getWorkAnalytics(workId: number, timeframe: AnalyticsTimeframe) {
+  const chapters = getAllChapters(workId);
+  const buckets = analyticsBuckets(timeframe);
+  const rows = database.prepare(`SELECT chapter_id AS chapterId, viewed_on AS viewedOn, COUNT(*) AS count
+    FROM chapter_views WHERE work_id = ? AND viewed_on >= ? GROUP BY chapter_id, viewed_on`)
+    .all(workId, analyticsPeriodStart(timeframe)) as Array<{ chapterId: number; viewedOn: string; count: number }>;
+  const bySeries = new Map<number, Map<string, number>>();
+  rows.forEach((row) => {
+    const values = bySeries.get(row.chapterId) ?? new Map<string, number>();
+    const bucket = analyticsBucket(row.viewedOn, timeframe);
+    values.set(bucket, (values.get(bucket) ?? 0) + Number(row.count));
+    bySeries.set(row.chapterId, values);
+  });
+  const viewCount = Number((database.prepare("SELECT COUNT(DISTINCT visitor_key) AS count FROM work_views WHERE work_id = ?").get(workId) as { count: number }).count);
+  const followerCount = Number((database.prepare("SELECT COUNT(*) AS count FROM work_followers WHERE work_id = ?").get(workId) as { count: number }).count);
+  const likeCount = Number((database.prepare("SELECT COUNT(*) AS count FROM work_likes WHERE work_id = ?").get(workId) as { count: number }).count);
+  return { buckets, viewCount, followerCount, likeCount, chapters, series: chapters.map((chapter) => ({ id: chapter.id, name: chapter.title, values: buckets.map((bucket) => bySeries.get(chapter.id)?.get(bucket) ?? 0) })) };
+}
+
+export function getChapterAnalytics(chapterId: number, workId: number, timeframe: AnalyticsTimeframe) {
+  const buckets = analyticsBuckets(timeframe);
+  const rows = database.prepare(`SELECT viewed_on AS viewedOn, COUNT(*) AS count FROM chapter_views
+    WHERE chapter_id = ? AND work_id = ? AND viewed_on >= ? GROUP BY viewed_on`)
+    .all(chapterId, workId, analyticsPeriodStart(timeframe)) as Array<{ viewedOn: string; count: number }>;
+  const values = new Map<string, number>();
+  rows.forEach((row) => {
+    const bucket = analyticsBucket(row.viewedOn, timeframe);
+    values.set(bucket, (values.get(bucket) ?? 0) + Number(row.count));
+  });
+  const totalViews = Number((database.prepare("SELECT COUNT(DISTINCT visitor_key) AS count FROM chapter_views WHERE chapter_id = ?").get(chapterId) as { count: number }).count);
+  const progressRows = database.prepare("SELECT threshold, COUNT(*) AS count FROM chapter_progress WHERE chapter_id = ? GROUP BY threshold")
+    .all(chapterId) as Array<{ threshold: number; count: number }>;
+  const counts = new Map(progressRows.map((row) => [Number(row.threshold), Number(row.count)]));
+  return { buckets, totalViews, values: buckets.map((bucket) => values.get(bucket) ?? 0), progress: [25, 50, 75, 100].map((threshold) => ({ threshold, count: counts.get(threshold) ?? 0, percentage: totalViews ? Math.round(((counts.get(threshold) ?? 0) / totalViews) * 1000) / 10 : 0 })) };
+}
+
+export function getChapterById(workId: number, chapterId: number) {
+  return database
+    .prepare("SELECT * FROM chapters WHERE id = ? AND work_id = ?")
+    .get(chapterId, workId) as ChapterRecord | undefined;
 }
 
 export function createChapterNotifications(workId: number, chapterId: number) {

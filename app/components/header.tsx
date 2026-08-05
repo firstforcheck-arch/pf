@@ -177,16 +177,17 @@ function ProfileMenu({
             <span>{text("Работы", "Роботи")}</span>
             <b aria-hidden="true">→</b>
           </Link>
-          <Link className="profile-menu__works-link" to="/about" onClick={() => setOpen(false)}>
+          <Link className="profile-menu__works-link profile-menu__about-link" to="/about" onClick={() => setOpen(false)}>
             <span>{text("О платформе", "Про платформу")}</span>
             <b aria-hidden="true">→</b>
           </Link>
-          {(user?.role === "admin" || user?.accountPlus === 1) && (
+          {(user?.role === "admin" || user?.accountPlus === 1) && (<>
             <Link to={editorTo} onClick={() => setOpen(false)}>
               <span>{text("Редактор", "Редактор")}</span>
               <b aria-hidden="true">→</b>
             </Link>
-          )}
+            <Link to="/analytics" onClick={() => setOpen(false)}><span>{text("Аналитика", "Аналітика")}</span><b aria-hidden="true">→</b></Link>
+          </>)}
           {user?.role === "admin" && (
             <Link to="/admin/users" onClick={() => setOpen(false)}>
               <span>{text("Управление", "Керування")}</span>

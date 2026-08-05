@@ -7,6 +7,7 @@ import { canManageWork, createComment, deleteComment, getChapter, getChapterByPu
 import { getCurrentUser } from "../auth.server";
 import { useEffect, useRef, useState } from "react";
 import { useLocalization } from "../localization";
+import { AnalyticsTracker } from "../components/analytics-tracker";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
@@ -92,6 +93,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
 
   return (
     <main className="reader">
+      <AnalyticsTracker workId={book.id} chapterId={chapter.id} disabled={preview} />
       <Header profileEditorTo={`/editor/works/${book.id}/chapters/${chapter.slug}`} beforeAction={preview ? (
         <Link className="preview-toggle preview-toggle--mobile" to={`/editor/works/${book.id}/chapters/${chapter.slug}`} aria-label={text("Вернуться в редактор", "Повернутися до редактора")} title={text("Вернуться в редактор", "Повернутися до редактора")}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 6-6 6 6 6M9 12h10" /></svg>
