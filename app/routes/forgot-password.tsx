@@ -45,7 +45,7 @@ export default function ForgotPassword({ actionData }: Route.ComponentProps) {
           <p className="form-success">{text("Письмо со ссылкой для восстановления отправлено.", "Лист із посиланням для відновлення надіслано.")}</p>
         ) : (
           <Form method="post" className="auth-form">
-            <label>{text("Почта", "Пошта")}<input type="email" name="email" autoComplete="email" required /></label>
+            <label>{text("Почта", "Пошта")}<input type="email" name="email" autoComplete="email" placeholder="example@mail.com" required /></label>
             <p className="editor-hint">{text("Укажите почту, сохранённую в профиле.", "Укажіть пошту, збережену в профілі.")}</p>
             <button type="submit">{text("Отправить ссылку", "Надіслати посилання")}</button>
           </Form>

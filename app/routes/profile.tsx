@@ -119,8 +119,8 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
                 <small>{text("JPG, PNG, WebP или GIF, не более 1 МБ.", "JPG, PNG, WebP або GIF, не більше 1 МБ.")}</small>
               </div>
             </div>
-            <label>{text("Юзернейм", "Юзернейм")}<input name="username" defaultValue={loaderData.user.username} autoComplete="username" required /></label>
-            <label>{text("Почта (необязательно)", "Пошта (необов’язково)")}<input type="email" name="email" defaultValue={loaderData.user.email ?? ""} autoComplete="email" /></label>
+            <label>{text("Юзернейм", "Юзернейм")}<input name="username" defaultValue={loaderData.user.username} autoComplete="username" placeholder={text("Введите юзернейм", "Введіть юзернейм")} required /></label>
+            <label>{text("Почта (необязательно)", "Пошта (необов’язково)")}<input type="email" name="email" defaultValue={loaderData.user.email ?? ""} autoComplete="email" placeholder="example@mail.com" /></label>
             <p className="editor-hint">{text(
               "На эту почту будут приходить уведомления о новых главах и ссылка для восстановления пароля.",
               "На цю пошту надходитимуть сповіщення про нові глави та посилання для відновлення пароля.",
@@ -135,9 +135,9 @@ export default function Profile({ loaderData, actionData }: Route.ComponentProps
           <h1>{text("Смена пароля", "Зміна пароля")}</h1>
           <Form method="post" className="editor-form">
             <input type="hidden" name="intent" value="password" />
-            <label>{text("Текущий пароль", "Поточний пароль")}<input type="password" name="currentPassword" autoComplete="current-password" required /></label>
-            <label>{text("Новый пароль", "Новий пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" required /></label>
-            <label>{text("Повторите новый пароль", "Повторіть новий пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" required /></label>
+            <label>{text("Текущий пароль", "Поточний пароль")}<input type="password" name="currentPassword" autoComplete="current-password" placeholder={text("Введите текущий пароль", "Введіть поточний пароль")} required /></label>
+            <label>{text("Новый пароль", "Новий пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" placeholder={text("Не менее 8 символов", "Не менше 8 символів")} required /></label>
+            <label>{text("Повторите новый пароль", "Повторіть новий пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" placeholder={text("Введите новый пароль ещё раз", "Введіть новий пароль ще раз")} required /></label>
             {actionData?.section === "password" && actionData.error && <p className="form-error">{translateError(actionData.error)}</p>}
             {actionData?.section === "password" && actionData.ok && <p className="form-success">{text("Пароль изменён.", "Пароль змінено.")}</p>}
             <button type="submit">{text("Изменить пароль", "Змінити пароль")}</button>

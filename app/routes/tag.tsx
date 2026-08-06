@@ -83,10 +83,10 @@ export default function TagPage({ loaderData }: Route.ComponentProps) {
         <editFetcher.Form method="post" className="tag-manage-form">
           <input type="hidden" name="intent" value="edit" />
           <div className="tag-manage-form__grid">
-            <label>{text("Название на русском", "Назва російською")}<input name="nameRu" required maxLength={60} defaultValue={loaderData.tag.nameRu} /></label>
-            <label>{text("Название на украинском", "Назва українською")}<input name="nameUk" required maxLength={60} defaultValue={loaderData.tag.nameUk} /></label>
-            <label>{text("Описание на русском", "Опис російською")}<textarea name="descriptionRu" maxLength={500} defaultValue={loaderData.tag.descriptionRu} /></label>
-            <label>{text("Описание на украинском", "Опис українською")}<textarea name="descriptionUk" maxLength={500} defaultValue={loaderData.tag.descriptionUk} /></label>
+            <label>{text("Название на русском", "Назва російською")}<input name="nameRu" required maxLength={60} defaultValue={loaderData.tag.nameRu} placeholder={text("Введите название на русском", "Введіть назву російською")} /></label>
+            <label>{text("Название на украинском", "Назва українською")}<input name="nameUk" required maxLength={60} defaultValue={loaderData.tag.nameUk} placeholder={text("Введите название на украинском", "Введіть назву українською")} /></label>
+            <label>{text("Описание на русском", "Опис російською")}<textarea name="descriptionRu" maxLength={500} defaultValue={loaderData.tag.descriptionRu} placeholder={text("Введите описание на русском", "Введіть опис російською")} /></label>
+            <label>{text("Описание на украинском", "Опис українською")}<textarea name="descriptionUk" maxLength={500} defaultValue={loaderData.tag.descriptionUk} placeholder={text("Введите описание на украинском", "Введіть опис українською")} /></label>
           </div>
           {editFetcher.data?.error && <p className="form-error">{editFetcher.data.error}</p>}
           <div className="confirm-modal__actions"><button type="button" disabled={editFetcher.state !== "idle"} onClick={() => setEditing(false)}>{text("Отмена", "Скасувати")}</button><button type="submit" disabled={editFetcher.state !== "idle"}>{editFetcher.state === "submitting" ? text("Сохранение…", "Збереження…") : text("Сохранить", "Зберегти")}</button></div>

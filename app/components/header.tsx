@@ -204,13 +204,20 @@ function ProfileMenu({
             <span>{text("Язык", "Мова")}</span>
             <LanguageToggle />
           </div>
-          {!user && (
-            <>
-              <Link to="/login" onClick={() => setOpen(false)}><span>{text("Вход", "Вхід")}</span><b aria-hidden="true">→</b></Link>
-              <Link to="/register" onClick={() => setOpen(false)}><span>{text("Регистрация", "Реєстрація")}</span><b aria-hidden="true">→</b></Link>
-            </>
-          )}
         </nav>
+        {!user && (
+          <div className="profile-menu__auth">
+            <Link className="profile-menu__login" to="/login" onClick={() => setOpen(false)}>
+              {text("Войти", "Увійти")}
+            </Link>
+            <p>
+              {text("Нет аккаунта?", "Немає акаунта?")} {" "}
+              <Link to="/register" onClick={() => setOpen(false)}>
+                {text("Зарегистрироваться", "Зареєструватися")}
+              </Link>
+            </p>
+          </div>
+        )}
         {user && (
           <Form method="post" action="/logout">
             <button className="profile-menu__logout" type="submit">{text("Выйти", "Вийти")}</button>

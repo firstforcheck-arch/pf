@@ -48,9 +48,9 @@ export default function Register({ actionData }: Route.ComponentProps) {
         <p className="eyebrow">{text("Новый аккаунт", "Новий обліковий запис")}</p>
         <h1>{text("Регистрация", "Реєстрація")}</h1>
         <Form method="post" className="auth-form">
-          <label>{text("Юзернейм", "Юзернейм")}<input name="username" autoComplete="username" required /></label>
-          <label>{text("Пароль", "Пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" required /></label>
-          <label>{text("Повторите пароль", "Повторіть пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" required /></label>
+          <label>{text("Юзернейм", "Юзернейм")}<input name="username" autoComplete="username" placeholder={text("Придумайте юзернейм", "Придумайте юзернейм")} required /></label>
+          <label>{text("Пароль", "Пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" placeholder={text("Не менее 8 символов", "Не менше 8 символів")} required /></label>
+          <label>{text("Повторите пароль", "Повторіть пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" placeholder={text("Введите пароль ещё раз", "Введіть пароль ще раз")} required /></label>
           {actionData?.error && <p className="form-error">{text(actionData.error, ukError)}</p>}
           <button type="submit">{text("Создать аккаунт", "Створити обліковий запис")}</button>
         </Form>

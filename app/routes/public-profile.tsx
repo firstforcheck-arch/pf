@@ -66,8 +66,8 @@ export default function PublicProfile({ loaderData, actionData }: Route.Componen
     </div>
   </div>
   {loaderData.isAdmin && loaderData.privateUser && <section className="admin-user-panel"><div className="admin-user-panel__heading"><p className="eyebrow">{text("Доступ администратора", "Доступ адміністратора")}</p><h2>{text("Управление пользователем", "Керування користувачем")}</h2></div>
-    <Form method="post" className="editor-form"><input type="hidden" name="intent" value="email" /><label>Email<input type="email" name="email" defaultValue={loaderData.privateUser.email ?? ""} /></label><button type="submit">{text("Сохранить почту", "Зберегти пошту")}</button></Form>
-    <Form method="post" className="editor-form"><input type="hidden" name="intent" value="password" /><label>{text("Назначить новый пароль", "Призначити новий пароль")}<input type="password" name="password" minLength={8} /></label>{actionData?.error && <p className="form-error">{actionData.error}</p>}<button type="submit">{text("Сменить пароль", "Змінити пароль")}</button></Form>
+    <Form method="post" className="editor-form"><input type="hidden" name="intent" value="email" /><label>Email<input type="email" name="email" defaultValue={loaderData.privateUser.email ?? ""} placeholder="example@mail.com" /></label><button type="submit">{text("Сохранить почту", "Зберегти пошту")}</button></Form>
+    <Form method="post" className="editor-form"><input type="hidden" name="intent" value="password" /><label>{text("Назначить новый пароль", "Призначити новий пароль")}<input type="password" name="password" minLength={8} placeholder={text("Не менее 8 символов", "Не менше 8 символів")} /></label>{actionData?.error && <p className="form-error">{actionData.error}</p>}<button type="submit">{text("Сменить пароль", "Змінити пароль")}</button></Form>
   </section>}
   <section className="public-profile-works"><div className="section-heading"><p className="eyebrow">{text("Публикации", "Публікації")}</p><h2>{text("Работы пользователя", "Роботи користувача")}</h2></div><WorkGrid works={loaderData.works} /></section>
   </section>

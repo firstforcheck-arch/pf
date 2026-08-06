@@ -108,9 +108,9 @@ export default function AdminChapter({ loaderData, actionData }: Route.Component
         </div>
         <Form method="post" className="editor-form">
           <div className="chapter-position-note">{text("Глава", "Глава")} {chapter.number} · /works/{work.slug}/chapters/{chapter.publicSlug}</div>
-          <label>{text("Название", "Назва")}<input name="title" defaultValue={chapter.title} required /></label>
-          <label>{text("Краткое описание", "Короткий опис")}<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} /></label>
-          <div className="editor-form__field"><label htmlFor="chapter-content">{text("Текст главы", "Текст глави")}</label><RichTextEditor name="content" rows={28} value={content} onChange={setContent} /></div>
+          <label>{text("Название", "Назва")}<input name="title" defaultValue={chapter.title} placeholder={text("Введите название главы", "Введіть назву глави")} required /></label>
+          <label>{text("Краткое описание", "Короткий опис")}<textarea name="subtitle" rows={3} defaultValue={chapter.subtitle} placeholder={text("Кратко опишите содержание главы", "Коротко опишіть зміст глави")} /></label>
+          <div className="editor-form__field"><label htmlFor="chapter-content">{text("Текст главы", "Текст глави")}</label><RichTextEditor name="content" rows={28} value={content} placeholder={text("Начните писать текст главы…", "Почніть писати текст глави…")} onChange={setContent} /></div>
           <p className="editor-hint">{text("Разделяйте абзацы одной пустой строкой. Одна условная страница равна 1800 знакам с пробелами.", "Розділяйте абзаци одним порожнім рядком. Одна умовна сторінка дорівнює 1800 знакам із пробілами.")}</p>
           {actionData?.error && <p className="form-error">{text(
             actionData.error,

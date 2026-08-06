@@ -46,8 +46,8 @@ export default function ResetPassword({ loaderData, actionData }: Route.Componen
         ) : (
           <Form method="post" className="auth-form">
             <input type="hidden" name="token" value={loaderData.token} />
-            <label>{text("Новый пароль", "Новий пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" required /></label>
-            <label>{text("Повторите пароль", "Повторіть пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" required /></label>
+            <label>{text("Новый пароль", "Новий пароль")}<input type="password" name="password" minLength={8} autoComplete="new-password" placeholder={text("Не менее 8 символов", "Не менше 8 символів")} required /></label>
+            <label>{text("Повторите пароль", "Повторіть пароль")}<input type="password" name="confirmation" minLength={8} autoComplete="new-password" placeholder={text("Введите пароль ещё раз", "Введіть пароль ще раз")} required /></label>
             {actionData?.error && <p className="form-error">{text(
               actionData.error,
               actionData.error === "Пароли не совпадают." ? "Паролі не збігаються."

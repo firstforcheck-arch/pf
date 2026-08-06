@@ -161,8 +161,8 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
           <h1>{text("Шапка работы", "Шапка роботи")}</h1>
           <Form method="post" encType="multipart/form-data" className="editor-form book-header-form" onChange={() => setHeaderDirty(true)}>
             <input type="hidden" name="intent" value="save-book" />
-            <label>{text("Название", "Назва")}<input name="title" defaultValue={loaderData.book.title} required /></label>
-            <label>{text("Описание", "Опис")}<textarea name="description" rows={5} defaultValue={loaderData.book.description} /></label>
+            <label>{text("Название", "Назва")}<input name="title" defaultValue={loaderData.book.title} placeholder={text("Введите название работы", "Введіть назву роботи")} required /></label>
+            <label>{text("Описание", "Опис")}<textarea name="description" rows={5} defaultValue={loaderData.book.description} placeholder={text("Расскажите, о чём эта работа", "Розкажіть, про що ця робота")} /></label>
             <TagEditor workId={loaderData.book.id} initialTags={loaderData.selectedTags} onDirty={() => setHeaderDirty(true)} />
             <CoverEditor
               coverUrl={loaderData.book.coverUrl}
@@ -187,7 +187,7 @@ export default function AdminChapters({ loaderData, actionData }: Route.Componen
           <h1>{text("Примечания", "Примітки")}</h1>
           <Form method="post" className="editor-form book-header-form" onChange={() => setNotesDirty(true)}>
             <input type="hidden" name="intent" value="save-notes" />
-            <label>{text("Текст примечания", "Текст примітки")}<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} /></label>
+            <label>{text("Текст примечания", "Текст примітки")}<textarea name="notes" rows={7} defaultValue={loaderData.book.notes} placeholder={text("Добавьте примечание для читателей", "Додайте примітку для читачів")} /></label>
             <button className={notesDirty ? "save-button--dirty" : undefined} type="submit">{text("Сохранить примечания", "Зберегти примітки")}</button>
           </Form>
         </div>
@@ -372,8 +372,8 @@ function TagEditor({ workId, initialTags, onDirty }: { workId: number; initialTa
         <p className="tag-create-modal__notice"><strong>{text("Перед созданием метки, пожалуйста, проверьте наличие похожей в системе.", "Перед створенням мітки, будь ласка, перевірте наявність схожої в системі.")}</strong></p>
         <p className="tag-create-modal__language-warning"><strong>{text("Обязательно пишите текст метки на языке интерфейса.", "Обов’язково пишіть текст мітки мовою інтерфейсу.")}</strong></p>
         <div className="tag-create-modal__fields">
-          <label>{text("Название", "Назва")}<input autoFocus value={name} maxLength={60} onChange={(event) => setName(event.target.value)} /></label>
-          <label>{text("Описание", "Опис")}<textarea value={description} maxLength={500} rows={4} onChange={(event) => setDescription(event.target.value)} /></label>
+          <label>{text("Название", "Назва")}<input autoFocus value={name} maxLength={60} placeholder={text("Введите название метки", "Введіть назву мітки")} onChange={(event) => setName(event.target.value)} /></label>
+          <label>{text("Описание", "Опис")}<textarea value={description} maxLength={500} rows={4} placeholder={text("Опишите значение метки", "Опишіть значення мітки")} onChange={(event) => setDescription(event.target.value)} /></label>
           {createFetcher.data?.tagError && String(createFetcher.formData?.get("name") ?? "") === name && <p className="form-error">{text(createFetcher.data.tagError, translateTagError(createFetcher.data.tagError))}</p>}
         </div>
         <div className="confirm-modal__actions">
@@ -522,6 +522,7 @@ function CoverEditor({
                   type="text"
                   inputMode="decimal"
                   value={draftZoomInput}
+                  placeholder="1.00"
                   aria-label={text("Значение масштаба", "Значення масштабу")}
                   aria-invalid={!zoomIsValid}
                   onChange={(event) => {

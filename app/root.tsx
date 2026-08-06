@@ -14,7 +14,7 @@ import { RouteLoader } from "./components/route-loader";
 import { getCurrentUser } from "./auth.server";
 import type { Route } from "./+types/root";
 import { ScrollMemoryButton } from "./components/scroll-memory-button";
-import { LocalizationProvider } from "./localization";
+import { LocalizationProvider, LocalizedFormValidation } from "./localization";
 import { getUnreadNotificationCount, getUserNotifications } from "./database.server";
 import { Footer } from "./components/footer";
 
@@ -54,6 +54,7 @@ export default function App() {
   const isChapterReader = Boolean(matchPath({ path: "/works/:workSlug/chapters/:chapterId", end: true }, pathname));
   return (
     <LocalizationProvider>
+      <LocalizedFormValidation />
       <RouteLoader />
       <Outlet />
       {!isChapterReader && <Footer />}

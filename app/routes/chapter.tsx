@@ -221,7 +221,7 @@ export default function ChapterPage({ loaderData, actionData }: Route.ComponentP
               <input type="hidden" name="intent" value="edit-comment" />
               <input type="hidden" name="commentId" value={commentToEdit.id} />
               <label className="sr-only" htmlFor="edited-comment-content">{text("Текст комментария", "Текст коментаря")}</label>
-              <textarea id="edited-comment-content" name="content" rows={6} maxLength={2000} defaultValue={commentToEdit.content} required autoFocus />
+              <textarea id="edited-comment-content" name="content" rows={6} maxLength={2000} defaultValue={commentToEdit.content} placeholder={text("Отредактируйте комментарий…", "Відредагуйте коментар…")} required autoFocus />
               <div className="confirm-modal__actions"><button type="button" onClick={() => setCommentToEdit(null)}>{text("Отмена", "Скасувати")}</button><button type="submit">{text("Сохранить", "Зберегти")}</button></div>
             </Form>
           </section>

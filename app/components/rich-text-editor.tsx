@@ -17,7 +17,7 @@ function enclosingFormat(value: string, start: number, end: number, format: Form
   return openIndex > previousClose && closeIndex >= end ? { openIndex, closeIndex } : null;
 }
 
-export function RichTextEditor({ value, onChange, name, rows = 28 }: { value: string; onChange: (value: string) => void; name: string; rows?: number }) {
+export function RichTextEditor({ value, onChange, name, rows = 28, placeholder }: { value: string; onChange: (value: string) => void; name: string; rows?: number; placeholder?: string }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
   const [toolbar, setToolbar] = useState({ left: 18, top: -48 });
@@ -63,7 +63,7 @@ export function RichTextEditor({ value, onChange, name, rows = 28 }: { value: st
         return <button key={format} type="button" className={`rich-text-toolbar__${format} ${pressed ? "active" : ""}`} aria-pressed={pressed} title={formats[format].shortcut} aria-label={`${format} (${formats[format].shortcut})`} onMouseDown={(event) => { event.preventDefault(); applyFormat(format); }}>{formats[format].label}</button>;
       })}
     </div>}
-    <textarea id="chapter-content" ref={textareaRef} className="editor-form__content" name={name} rows={rows} value={value} onChange={(event) => onChange(event.currentTarget.value)} onSelect={updateSelection} onClick={updateSelection} onKeyUp={updateSelection} onScroll={updateSelection} onBlur={() => setSelection(null)} onKeyDown={(event) => {
+    <textarea id="chapter-content" ref={textareaRef} className="editor-form__content" name={name} rows={rows} value={value} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)} onSelect={updateSelection} onClick={updateSelection} onKeyUp={updateSelection} onScroll={updateSelection} onBlur={() => setSelection(null)} onKeyDown={(event) => {
       if (!(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       const format = key === "b" ? "bold" : key === "i" ? "italic" : key === "u" ? "underline" : event.shiftKey && key === "x" ? "strike" : null;
