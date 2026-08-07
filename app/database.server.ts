@@ -20,6 +20,7 @@ export type WorkRecord = BookSettings & {
   owner: Pick<PublicUser, "id" | "username" | "avatarUrl">;
   published: number;
   createdAt: string;
+  updatedAt: string;
 };
 export type WorkCardRecord = WorkRecord & {
   chapterCount: number;
@@ -59,6 +60,7 @@ export type ChapterRecord = {
   content: string;
   sortOrder: number;
   published: number;
+  updatedAt?: string;
 };
 export type BookSettings = {
   title: string;
@@ -824,7 +826,7 @@ const workSelect = `
   SELECT works.id, works.slug, works.owner_id AS ownerId, works.title, works.description, works.notes,
     works.cover_url AS coverUrl, works.cover_position_x AS coverPositionX,
     works.cover_position_y AS coverPositionY, works.cover_zoom AS coverZoom,
-    works.published, works.created_at AS createdAt,
+    works.published, works.created_at AS createdAt, works.updated_at AS updatedAt,
     users.id AS userId, users.username, users.avatar_url AS avatarUrl
   FROM works JOIN users ON users.id = works.owner_id
 `;
@@ -1045,6 +1047,10 @@ export function getPublishedTagsBySlugs(slugs: string[]) {
   `).all(...validSlugs) as any[]).map(mapTag);
 }
 
+export function getPublishedTags() {
+  return searchPublishedTags("", 10_000);
+}
+
 export function getWorkTags(workId: number) {
   return (database.prepare(`
     SELECT tags.id, tags.slug, tags.name, tags.description,
@@ -1240,7 +1246,7 @@ export function deleteWork(id: number) {
 
 export function getPublishedChapters(workId: number) {
   return database.prepare(`
-    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published
+    SELECT id, slug, public_slug AS publicSlug, number, title, subtitle, reading_time AS readingTime, content, sort_order AS sortOrder, published, updated_at AS updatedAt
     FROM chapters WHERE work_id = ? AND published = 1 ORDER BY sort_order, id
   `).all(workId) as unknown as ChapterRecord[];
 }

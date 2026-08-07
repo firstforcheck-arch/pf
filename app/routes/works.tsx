@@ -6,8 +6,14 @@ import { getCurrentUser } from "../auth.server";
 import { enrichWorkCards, getPublishedTagsBySlugs, getPublishedWorks, type TagRecord } from "../database.server";
 import { WorkGrid } from "./home";
 import { useLocalization } from "../localization";
+import { socialMeta } from "../seo";
 
-export function meta() { return [{ title: "Работы — Phantom Freedom" }]; }
+export function meta() {
+  return socialMeta({
+    title: "Работы — Phantom Freedom",
+    description: "Каталог авторских произведений Phantom Freedom: находите новые истории по меткам и объёму.",
+  });
+}
 
 function pageCount(value: string | null) {
   if (!value?.trim()) return null;

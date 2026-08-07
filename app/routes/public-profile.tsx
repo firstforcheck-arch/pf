@@ -7,13 +7,32 @@ import { Header } from "../components/header";
 import { WorkGrid } from "./home";
 import { useLocalization } from "../localization";
 import { isUserOnline } from "../realtime.server";
+import { absoluteUrl, socialMeta } from "../seo";
+import { getSiteUrl } from "../seo.server";
+
+export function meta({ loaderData }: Route.MetaArgs) {
+  const username = loaderData?.profile.username ?? "Автор";
+  const title = `${username} — автор на Phantom Freedom`;
+  const description = `Профиль автора ${username} и опубликованные произведения на Phantom Freedom.`;
+  return [...socialMeta({
+    title,
+    description,
+    type: "profile",
+    url: loaderData ? absoluteUrl(loaderData.siteUrl, `/users/${encodeURIComponent(username)}`) : undefined,
+  }), ...(loaderData ? [{ "script:ld+json": {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: username,
+    url: absoluteUrl(loaderData.siteUrl, `/users/${encodeURIComponent(username)}`),
+  } }] : [])];
+}
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const profile = getPublicUserByUsername(params.username);
   if (!profile) throw new Response("Пользователь не найден", { status: 404 });
   const viewer = await getCurrentUser(request);
   const privateUser = viewer?.role === "admin" ? findUserById(profile.id) : null;
-  return { profile, privateUser, viewer, isOnline: viewer?.id === profile.id || isUserOnline(profile.id), isAdmin: viewer?.role === "admin", works: enrichWorkCards(getWorksByOwner(profile.id, viewer?.role === "admin"), viewer?.id) };
+  return { profile, privateUser, viewer, siteUrl: getSiteUrl(request), isOnline: viewer?.id === profile.id || isUserOnline(profile.id), isAdmin: viewer?.role === "admin", works: enrichWorkCards(getWorksByOwner(profile.id, viewer?.role === "admin"), viewer?.id) };
 }
 export async function action({ request, params }: Route.ActionArgs) {
   const admin = await getCurrentUser(request);

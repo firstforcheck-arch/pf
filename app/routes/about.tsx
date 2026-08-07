@@ -1,14 +1,12 @@
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { socialMeta } from "../seo";
 
 export function meta() {
-  return [
-    { title: "О платформе — Phantom Freedom" },
-    {
-      name: "description",
-      content: "Phantom Freedom — независимая платформа для свободной публикации текстов.",
-    },
-  ];
+  return socialMeta({
+    title: "О платформе — Phantom Freedom",
+    description: "Phantom Freedom — независимая платформа для свободной публикации текстов.",
+  });
 }
 
 export default function About() {

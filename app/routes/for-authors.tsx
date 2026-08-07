@@ -1,9 +1,13 @@
 import { Link } from "react-router";
 import { Header } from "../components/header";
 import { useLocalization } from "../localization";
+import { socialMeta } from "../seo";
 
 export function meta() {
-  return [{ title: "Для авторов — Phantom Freedom" }];
+  return socialMeta({
+    title: "Для авторов — Phantom Freedom",
+    description: "Публикуйте произведения, собирайте главы и находите своих читателей на Phantom Freedom.",
+  });
 }
 
 export default function ForAuthors() {

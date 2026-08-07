@@ -10,13 +10,36 @@ import { useLocalization } from "../localization";
 import { AnalyticsTracker } from "../components/analytics-tracker";
 import { formatInlineText } from "../components/formatted-text";
 import { enforceRateLimit } from "../security.server";
+import { getSiteUrl } from "../seo.server";
+import { absoluteUrl, socialMeta } from "../seo";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const chapter = loaderData?.chapter;
-  return [
-    { title: chapter ? `${chapter.title} — ${loaderData?.book.title}` : `Глава не найдена — ${loaderData?.book.title}` },
-    { name: "description", content: chapter?.subtitle ?? loaderData?.book.description },
-  ];
+  const title = chapter ? `${chapter.title} — ${loaderData?.book.title}` : `Глава не найдена — ${loaderData?.book.title ?? "Phantom Freedom"}`;
+  const description = chapter?.subtitle || loaderData?.book.description || "Глава произведения на Phantom Freedom.";
+  return [...socialMeta({
+    title,
+    description,
+    type: "article",
+    url: loaderData && chapter ? absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}/chapters/${chapter.publicSlug}`) : undefined,
+    image: loaderData ? absoluteUrl(loaderData.siteUrl, loaderData.book.coverUrl ? `/works/${loaderData.book.slug}/cover` : "/logo4.png") : undefined,
+  }), ...(loaderData && chapter ? [{ "script:ld+json": [{
+      "@context": "https://schema.org",
+      "@type": "Chapter",
+      name: chapter.title,
+      description,
+      url: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}/chapters/${chapter.publicSlug}`),
+      isPartOf: { "@type": "CreativeWork", name: loaderData.book.title, url: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}`) },
+      author: { "@type": "Person", name: loaderData.book.owner.username },
+    }, {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Работы", item: absoluteUrl(loaderData.siteUrl, "/works") },
+        { "@type": "ListItem", position: 2, name: loaderData.book.title, item: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}`) },
+        { "@type": "ListItem", position: 3, name: chapter.title, item: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}/chapters/${chapter.publicSlug}`) },
+      ],
+    }] }] : [])];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -28,7 +51,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const chapters = getPublishedChapters(book.id);
   const publishedChapter = book.published === 1 ? getChapter(book.id, params.chapterId) : undefined;
   const chapter = publishedChapter ?? (user && canManageWork(user, book.id) ? getChapterByPublicSlug(book.id, params.chapterId) : undefined);
-  return { chapter, chapters, book, canManage: Boolean(user && canManageWork(user, book.id)), comments: chapter ? getChapterComments(chapter.id) : [], engagement: getWorkEngagement(book.id, user?.id) };
+  return { chapter, chapters, book, siteUrl: getSiteUrl(request), canManage: Boolean(user && canManageWork(user, book.id)), comments: chapter ? getChapterComments(chapter.id) : [], engagement: getWorkEngagement(book.id, user?.id) };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {

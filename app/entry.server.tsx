@@ -43,6 +43,8 @@ function applySecurityHeaders(headers: Headers, nonce: string) {
   if (production) headers.set("Strict-Transport-Security", "max-age=31536000");
 }
 
+const privateSeoPaths = /^(?:\/admin(?:\/|$)|\/analytics(?:\/|$)|\/editor(?:\/|$)|\/messages(?:\/|$)|\/notifications(?:\/|$)|\/profile(?:\/|$)|\/login\/?$|\/register\/?$|\/forgot-password\/?$|\/reset-password\/?$)/;
+
 export default function handleRequest(
   request: Request,
   responseStatusCode: number,
@@ -52,6 +54,9 @@ export default function handleRequest(
 ) {
   const nonce = randomBytes(18).toString("base64");
   applySecurityHeaders(responseHeaders, nonce);
+  if (privateSeoPaths.test(new URL(request.url).pathname)) {
+    responseHeaders.set("X-Robots-Tag", "noindex, nofollow");
+  }
 
   if (request.method.toUpperCase() === "HEAD") {
     return new Response(null, { status: responseStatusCode, headers: responseHeaders });

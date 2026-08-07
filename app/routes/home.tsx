@@ -6,14 +6,25 @@ import { getCurrentUser } from "../auth.server";
 import { enrichWorkCards, getPublishedWorks, type WorkCardRecord } from "../database.server";
 import { useLocalization } from "../localization";
 import { formatChapters, formatPages } from "../text-metrics";
+import { socialMeta } from "../seo";
+import { absoluteUrl } from "../seo";
+import { getSiteUrl } from "../seo.server";
 
-export function meta() {
-  return [{ title: "Phantom Freedom — ваш уголок свободы" }];
+export function meta({ loaderData }: Route.MetaArgs) {
+  return [...socialMeta({
+    title: "Phantom Freedom — ваш уголок свободы",
+    description: "Независимая платформа для публикации и чтения авторских произведений.",
+  }), ...(loaderData ? [{ "script:ld+json": {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Phantom Freedom",
+    url: absoluteUrl(loaderData.siteUrl, "/"),
+  } }] : [])];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getCurrentUser(request);
-  return { works: enrichWorkCards(getPublishedWorks(10), user?.id) };
+  return { works: enrichWorkCards(getPublishedWorks(10), user?.id), siteUrl: getSiteUrl(request) };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {

@@ -8,9 +8,33 @@ import { getCurrentUser } from "../auth.server";
 import { countTotalPages, formatChapters, formatPages } from "../text-metrics";
 import { useLocalization } from "../localization";
 import { AnalyticsTracker } from "../components/analytics-tracker";
+import { getSiteUrl } from "../seo.server";
+import { absoluteUrl, socialMeta } from "../seo";
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  return [{ title: loaderData?.book.title ?? "Работа не найдена" }, { name: "description", content: loaderData?.book.description ?? "" }];
+  const title = loaderData?.book.title ?? "Работа не найдена";
+  const description = loaderData?.book.description || "Авторское произведение на Phantom Freedom.";
+  return [...socialMeta({
+    title: `${title} — Phantom Freedom`,
+    description,
+    type: "article",
+    url: loaderData ? absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}`) : undefined,
+    image: loaderData ? absoluteUrl(loaderData.siteUrl, loaderData.book.coverUrl ? `/works/${loaderData.book.slug}/cover` : "/logo4.png") : undefined,
+  }), ...(loaderData ? [{ "script:ld+json": [{
+      "@context": "https://schema.org",
+      "@type": "CreativeWork",
+      name: loaderData.book.title,
+      description,
+      url: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}`),
+      author: { "@type": "Person", name: loaderData.book.owner.username, url: absoluteUrl(loaderData.siteUrl, `/users/${encodeURIComponent(loaderData.book.owner.username)}`) },
+    }, {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Работы", item: absoluteUrl(loaderData.siteUrl, "/works") },
+        { "@type": "ListItem", position: 2, name: loaderData.book.title, item: absoluteUrl(loaderData.siteUrl, `/works/${loaderData.book.slug}`) },
+      ],
+    }] }] : [])];
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -18,7 +42,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   if (!book) throw new Response("Работа не найдена", { status: 404 });
   const user = await getCurrentUser(request);
   const chapters = getPublishedChapters(book.id);
-  return { book, chapters, tags: getWorkTags(book.id), user, following: user ? isFollowingWork(user.id, book.id) : false, totalPages: countTotalPages(chapters.map((chapter) => chapter.content)) };
+  return { book, chapters, tags: getWorkTags(book.id), user, siteUrl: getSiteUrl(request), following: user ? isFollowingWork(user.id, book.id) : false, totalPages: countTotalPages(chapters.map((chapter) => chapter.content)) };
 }
 
 export async function action({ params, request }: Route.ActionArgs) {

@@ -5,16 +5,20 @@ import { Header } from "../components/header";
 import { getCurrentUser, requireAdmin } from "../auth.server";
 import { deleteTag, getTagBySlug, updateTagManually } from "../database.server";
 import { formatLocalizedCount, useLocalization } from "../localization";
+import { absoluteUrl, socialMeta } from "../seo";
+import { getSiteUrl } from "../seo.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  return [{ title: loaderData ? `${loaderData.tag.name} — Phantom Freedom` : "Метка не найдена" }, { name: "description", content: loaderData?.tag.description ?? "" }];
+  const title = loaderData ? `${loaderData.tag.name} — Phantom Freedom` : "Метка не найдена";
+  const description = loaderData?.tag.description || "Произведения по метке на Phantom Freedom.";
+  return socialMeta({ title, description, url: loaderData ? absoluteUrl(loaderData.siteUrl, `/tags/${loaderData.tag.slug}`) : undefined });
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const tag = getTagBySlug(params.tagSlug);
   if (!tag) throw new Response("Метка не найдена", { status: 404 });
   const user = await getCurrentUser(request);
-  return { tag, isAdmin: user?.role === "admin" };
+  return { tag, siteUrl: getSiteUrl(request), isAdmin: user?.role === "admin" };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {

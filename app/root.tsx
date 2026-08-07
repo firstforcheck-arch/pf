@@ -17,6 +17,7 @@ import { ScrollMemoryButton } from "./components/scroll-memory-button";
 import { LocalizationProvider, LocalizedFormValidation } from "./localization";
 import { getUnreadNotificationCount, getUserNotifications } from "./database.server";
 import { Footer } from "./components/footer";
+import { getSiteUrl } from "./seo.server";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getCurrentUser(request);
@@ -24,6 +25,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     user,
     notifications: user ? getUserNotifications(user.id) : [],
     unreadNotifications: user ? getUnreadNotificationCount(user.id) : 0,
+    siteUrl: getSiteUrl(request),
     book: { title: "Phantom Freedom", description: "Ваш уголок свободы" },
   };
 }
@@ -49,11 +51,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
+const privateSeoPaths = /^(?:\/admin(?:\/|$)|\/analytics(?:\/|$)|\/editor(?:\/|$)|\/messages(?:\/|$)|\/notifications(?:\/|$)|\/profile(?:\/|$)|\/login\/?$|\/register\/?$|\/forgot-password\/?$|\/reset-password\/?$)/;
+
+export default function App({ loaderData }: Route.ComponentProps) {
   const { pathname } = useLocation();
   const isChapterReader = Boolean(matchPath({ path: "/works/:workSlug/chapters/:chapterId", end: true }, pathname));
+  const noIndex = privateSeoPaths.test(pathname);
+  const canonical = new URL(pathname === "/" ? "/" : pathname.replace(/\/$/, ""), `${loaderData.siteUrl}/`).toString();
   return (
     <LocalizationProvider>
+      {noIndex
+        ? <meta name="robots" content="noindex, nofollow" />
+        : <link rel="canonical" href={canonical} />}
       <LocalizedFormValidation />
       <RouteLoader />
       <Outlet />

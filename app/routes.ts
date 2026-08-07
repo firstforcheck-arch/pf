@@ -1,10 +1,13 @@
 import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 export default [
+  route("robots.txt", "routes/robots.ts"),
+  route("sitemap.xml", "routes/sitemap.ts"),
   index("routes/home.tsx"),
   route("about", "routes/about.tsx"),
   route("for-authors", "routes/for-authors.tsx"),
   route("works", "routes/works.tsx"),
+  route("works/:workSlug/cover", "routes/work-cover.ts"),
   route("works/:workSlug", "routes/work.tsx"),
   route("works/:workId/engagement", "routes/work-engagement.tsx"),
   route("works/:workSlug/chapters/:chapterId", "routes/chapter.tsx"),
