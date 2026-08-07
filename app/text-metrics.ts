@@ -6,7 +6,7 @@ export function countPages(text: string) {
 }
 
 export function countTotalPages(texts: string[]) {
-  return countPages(texts.join("\n\n"));
+  return texts.reduce((total, text) => total + countPages(text), 0);
 }
 
 function formatCount(value: number, one: string, few: string, many: string) {

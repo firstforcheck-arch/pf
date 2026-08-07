@@ -555,6 +555,8 @@ a { color: inherit; text-decoration: none; }
 .profile-menu__auth p a:hover { color: #397326; }
 .profile-menu__auth p { color: transparent; font-size: 0; }
 .profile-menu__auth p a { display: flex; width: 100%; align-items: center; justify-content: space-between; color: var(--green); font: 500 13px "Unbounded", sans-serif; text-decoration: none; }
+.profile-menu__auth .profile-menu__login,
+.profile-menu__auth p a { transition: color .1s ease; }
 .profile-menu__drawer nav { display: grid; margin-top: 0; }
 .profile-menu__works-link { display: none !important; }
 .profile-menu__theme { display: none; align-items: center; justify-content: space-between; min-height: 68px; padding: 0 4px; border-bottom: 1px solid var(--line); }
@@ -2177,8 +2179,12 @@ a { color: inherit; text-decoration: none; }
 .chat-peer > img { padding: 2px; }
 [data-theme="dark"] .editor-back-button:hover,
 [data-theme="dark"] .profile-menu__logout:hover { color: #09120c; }
-[data-theme="dark"] .profile-menu__auth .profile-menu__login,
-[data-theme="dark"] .profile-menu__auth .profile-menu__login:hover { color: #09120c; }
+[data-theme="dark"] .profile-menu__auth .profile-menu__login { color: var(--acid); }
+[data-theme="dark"] .profile-menu__auth .profile-menu__login:hover { color: #79b83d; }
+@media (max-width: 700px) {
+  [data-theme="dark"] .profile-menu__auth .profile-menu__login,
+  [data-theme="dark"] .profile-menu__auth .profile-menu__login:hover { color: #09120c; }
+}
 [data-theme="dark"] .reader__number { color: rgba(169, 223, 114, .18); }
 [data-theme="dark"] .book-stats b,
 [data-theme="dark"] .reader__pagination small,

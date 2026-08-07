@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { countPages } from "./text-metrics";
 
 export type PublicUser = {
   id: number;
@@ -843,20 +844,12 @@ export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardR
   if (works.length === 0) return [];
   const placeholders = works.map(() => "?").join(", ");
   const ids = works.map((work) => work.id);
-  const metrics = database.prepare(`
-    SELECT work_id AS workId, COUNT(*) AS chapterCount,
-      COALESCE(group_concat(content, char(10) || char(10)), '') AS content,
-      (
-        SELECT first_chapter.public_slug
-        FROM chapters AS first_chapter
-        WHERE first_chapter.work_id = chapters.work_id AND first_chapter.published = 1
-        ORDER BY first_chapter.sort_order, first_chapter.id
-        LIMIT 1
-      ) AS firstChapterSlug
+  const chapterMetrics = database.prepare(`
+    SELECT work_id AS workId, content, public_slug AS publicSlug
     FROM chapters
     WHERE published = 1 AND work_id IN (${placeholders})
-    GROUP BY work_id
-  `).all(...ids) as { workId: number; chapterCount: number; content: string; firstChapterSlug: string }[];
+    ORDER BY work_id, sort_order, id
+  `).all(...ids) as { workId: number; content: string; publicSlug: string }[];
   const likes = database.prepare(`
     SELECT work_id AS workId, COUNT(*) AS likeCount
     FROM work_likes WHERE work_id IN (${placeholders}) GROUP BY work_id
@@ -873,18 +866,30 @@ export function enrichWorkCards(works: WorkRecord[], userId?: number): WorkCardR
   `).all(...ids) as (TagRecord & { workId: number })[];
   const likedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_likes WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
   const followedIds = userId ? new Set((database.prepare(`SELECT work_id AS workId FROM work_followers WHERE user_id = ? AND work_id IN (${placeholders})`).all(userId, ...ids) as { workId: number }[]).map((row) => row.workId)) : new Set<number>();
-  const metricById = new Map(metrics.map((row) => [row.workId, row]));
+  const metricById = new Map<number, { chapterCount: number; totalPages: number; firstChapterSlug: string }>();
+  for (const chapter of chapterMetrics) {
+    const metric = metricById.get(chapter.workId);
+    if (metric) {
+      metric.chapterCount += 1;
+      metric.totalPages += countPages(chapter.content);
+    } else {
+      metricById.set(chapter.workId, {
+        chapterCount: 1,
+        totalPages: countPages(chapter.content),
+        firstChapterSlug: chapter.publicSlug,
+      });
+    }
+  }
   const likesById = new Map(likes.map((row) => [row.workId, row.likeCount]));
   const tagsById = new Map<number, TagRecord[]>();
   for (const { workId, ...tag } of tagRows) tagsById.set(workId, [...(tagsById.get(workId) ?? []), tag]);
   return works.map((work) => {
     const metric = metricById.get(work.id);
-    const characters = metric?.content.replace(/\s+/g, " ").trim().length ?? 0;
     return {
       ...work,
       chapterCount: metric?.chapterCount ?? 0,
       firstChapterSlug: metric?.firstChapterSlug ?? null,
-      totalPages: characters === 0 ? 0 : Math.ceil(characters / 1800),
+      totalPages: metric?.totalPages ?? 0,
       likeCount: likesById.get(work.id) ?? 0,
       liked: likedIds.has(work.id),
       following: followedIds.has(work.id),
